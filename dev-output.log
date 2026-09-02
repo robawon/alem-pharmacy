@@ -1,0 +1,172 @@
+  ▲ Next.js 14.2.5
+  - Local:        http://localhost:3000
+
+ ✓ Starting...
+ ✓ Ready in 11.7s
+ ○ Compiling /login ...
+ ✓ Compiled /login in 30.9s (510 modules)
+ GET /login 200 in 34591ms
+ GET /login 200 in 71ms
+<w> [webpack.cache.PackFileCacheStrategy/webpack.FileSystemInfo] Resolving '../../../typescript/lib/typescript' in c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\build for build dependencies doesn't lead to expected result 'C:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\typescript\lib\typescript.js', but to 'c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\typescript\lib\typescript.js' instead. Resolving dependencies are ignored for this path.
+<w>  at resolve commonjs file ../../../typescript/lib/typescript (expected C:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\typescript\lib\typescript.js)
+<w>  at file dependencies c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\build\load-jsconfig.js
+<w>  at file c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\build\load-jsconfig.js
+<w>  at file dependencies c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\build\webpack-config.js
+<w>  at file c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\build\webpack-config.js
+<w>  at file dependencies c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\build\webpack\loaders\next-swc-loader.js
+<w>  at file c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\build\webpack\loaders\next-swc-loader.js
+<w>  at resolve commonjs c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\build\webpack\loaders\next-swc-loader.js
+ ○ Compiling / ...
+ ✓ Compiled / in 1268ms (519 modules)
+ GET / 307 in 1909ms
+ GET /login 200 in 170ms
+ ○ Compiling /pos ...
+ ✓ Compiled /pos in 10.4s (752 modules)
+ ○ Compiling /inventory ...
+ ✓ Compiled /inventory in 2.9s (776 modules)
+ ○ Compiling /portal ...
+ ✓ Compiled /portal in 1015ms (782 modules)
+ ✓ Compiled in 20.1s (796 modules)
+ ✓ Compiled in 608ms (405 modules)
+ ⨯ Error: Cannot find module './227.js'
+Require stack:
+- c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server\webpack-runtime.js
+- c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server\app\portal\page.js
+- c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\require.js
+- c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\load-components.js
+- c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\build\utils.js
+- c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\dev\hot-middleware.js
+- c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\dev\hot-reloader-webpack.js
+- c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\lib\router-utils\setup-dev-bundler.js
+- c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\lib\router-server.js
+- c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\lib\start-server.js
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1421:15)
+    at c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\require-hook.js:55:36
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)
+    at Module._load (node:internal/modules/cjs/loader:1227:37)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1504:12)
+    at mod.require (c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\require-hook.js:65:28)
+    at require (node:internal/modules/helpers:152:16)
+    at __webpack_require__.f.require (c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server\webpack-runtime.js:203:28)
+    at c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server\webpack-runtime.js:111:40
+    at Array.reduce (<anonymous>)
+    at __webpack_require__.e (c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server\webpack-runtime.js:110:67)
+    at Array.map (<anonymous>)
+    at __webpack_require__.X (c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server\webpack-runtime.js:162:22)
+    at c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server\app\portal\page.js:1:6953
+    at Object.<anonymous> (c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server\app\portal\page.js:1:7002)
+    at Module._compile (node:internal/modules/cjs/loader:1761:14)
+    at Object..js (node:internal/modules/cjs/loader:1893:10)
+    at Module.load (node:internal/modules/cjs/loader:1481:32)
+    at Module._load (node:internal/modules/cjs/loader:1300:12)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1504:12)
+    at mod.require (c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\require-hook.js:65:28)
+    at require (node:internal/modules/helpers:152:16)
+    at requirePage (c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\require.js:109:84)
+    at c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\load-components.js:98:84
+    at async loadComponentsImpl (c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\load-components.js:98:26)
+    at async DevServer.findPageComponentsImpl (c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\next-server.js:710:36)
+    at async DevServer.findPageComponents (c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\dev\next-dev-server.js:577:20)
+    at async DevServer.renderPageComponent (c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\base-server.js:1917:24)
+    at async DevServer.renderToResponseImpl (c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\base-server.js:1969:32)
+    at async DevServer.pipeImpl (c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\base-server.js:920:25)
+    at async NextNodeServer.handleCatchallRenderRequest (c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\next-server.js:272:17)
+    at async DevServer.handleRequestImpl (c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\base-server.js:816:17)
+    at async c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\dev\next-dev-server.js:339:20
+    at async Span.traceAsyncFn (c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\trace\trace.js:154:20)
+    at async DevServer.handleRequest (c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\dev\next-dev-server.js:336:24)
+    at async invokeRender (c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\lib\router-server.js:174:21)
+    at async handleRequest (c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\lib\router-server.js:353:24)
+    at async requestHandlerImpl (c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\lib\router-server.js:377:13)
+    at async Server.requestListener (c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\lib\start-server.js:141:13) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    'c:\\Users\\robel\\Desktop\\alem pharma\\alem-pharmacy-pms\\.next\\server\\webpack-runtime.js',
+    'c:\\Users\\robel\\Desktop\\alem pharma\\alem-pharmacy-pms\\.next\\server\\app\\portal\\page.js',
+    'c:\\Users\\robel\\Desktop\\alem pharma\\alem-pharmacy-pms\\node_modules\\next\\dist\\server\\require.js',
+    'c:\\Users\\robel\\Desktop\\alem pharma\\alem-pharmacy-pms\\node_modules\\next\\dist\\server\\load-components.js',
+    'c:\\Users\\robel\\Desktop\\alem pharma\\alem-pharmacy-pms\\node_modules\\next\\dist\\build\\utils.js',
+    'c:\\Users\\robel\\Desktop\\alem pharma\\alem-pharmacy-pms\\node_modules\\next\\dist\\server\\dev\\hot-middleware.js',
+    'c:\\Users\\robel\\Desktop\\alem pharma\\alem-pharmacy-pms\\node_modules\\next\\dist\\server\\dev\\hot-reloader-webpack.js',
+    'c:\\Users\\robel\\Desktop\\alem pharma\\alem-pharmacy-pms\\node_modules\\next\\dist\\server\\lib\\router-utils\\setup-dev-bundler.js',
+    'c:\\Users\\robel\\Desktop\\alem pharma\\alem-pharmacy-pms\\node_modules\\next\\dist\\server\\lib\\router-server.js',
+    'c:\\Users\\robel\\Desktop\\alem pharma\\alem-pharmacy-pms\\node_modules\\next\\dist\\server\\lib\\start-server.js'
+  ],
+  page: '/portal'
+}
+ ○ Compiling /_error ...
+ ✓ Compiled /_error in 10.8s (1006 modules)
+ GET /portal 200 in 555ms
+ ○ Compiling /_not-found ...
+ ✓ Compiled /_not-found in 6.4s (1009 modules)
+ GET /_next/static/css/app/layout.css?v=1785083137802 404 in 9622ms
+ GET /_next/static/chunks/main-app.js?v=1785083137802 404 in 9331ms
+ GET /_next/static/chunks/app-pages-internals.js 404 in 9427ms
+ GET /_next/static/chunks/app/portal/page.js 404 in 938ms
+ GET /_next/static/chunks/app/error.js 404 in 104ms
+<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: ENOENT: no such file or directory, lstat 'c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server\vendor-chunks'
+<w> [webpack.cache.PackFileCacheStrategy/webpack.FileSystemInfo] Resolving './vendor-chunks/clsx' in c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server for build dependencies doesn't lead to expected result 'c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server\vendor-chunks\clsx.js', but to 'Error: Can't resolve './vendor-chunks/clsx' in 'c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server'' instead. Resolving dependencies are ignored for this path.
+<w>  at resolve commonjs file ./vendor-chunks/clsx (expected c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server\vendor-chunks\clsx.js)
+<w>  at file dependencies c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server\webpack-runtime.js
+<w>  at file c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server\webpack-runtime.js
+<w>  at file dependencies c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server\app\page.js
+<w>  at file c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server\app\page.js
+<w>  at file dependencies c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\require.js
+<w>  at file c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\require.js
+<w>  at file dependencies c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\load-components.js
+<w>  at file c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\load-components.js
+<w>  at file dependencies c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\build\utils.js
+<w>  at file c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\build\utils.js
+<w>  at file dependencies c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\build\webpack\loaders\next-route-loader\index.js
+<w>  at file c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\build\webpack\loaders\next-route-loader\index.js
+<w>  at resolve commonjs c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\build\webpack\loaders\next-route-loader\index.js
+<w> [webpack.cache.PackFileCacheStrategy/webpack.FileSystemInfo] Resolving './vendor-chunks/class-variance-authority' in c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server for build dependencies doesn't lead to expected result 'c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server\vendor-chunks\class-variance-authority.js', but to 'Error: Can't resolve './vendor-chunks/class-variance-authority' in 'c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server'' instead. Resolving dependencies are ignored for this path.
+<w>  at resolve commonjs file ./vendor-chunks/class-variance-authority (expected c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server\vendor-chunks\class-variance-authority.js)
+<w>  at file dependencies c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server\webpack-runtime.js
+<w>  at file c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server\webpack-runtime.js
+<w>  at file dependencies c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server\app\page.js
+<w>  at file c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server\app\page.js
+<w>  at file dependencies c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\require.js
+<w>  at file c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\require.js
+<w>  at file dependencies c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\load-components.js
+<w>  at file c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\load-components.js
+<w>  at file dependencies c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\build\utils.js
+<w>  at file c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\build\utils.js
+<w>  at file dependencies c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\build\webpack\loaders\next-route-loader\index.js
+<w>  at file c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\build\webpack\loaders\next-route-loader\index.js
+<w>  at resolve commonjs c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\build\webpack\loaders\next-route-loader\index.js
+<w> [webpack.cache.PackFileCacheStrategy/webpack.FileSystemInfo] Resolving './vendor-chunks/lucide-react' in c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server for build dependencies doesn't lead to expected result 'c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server\vendor-chunks\lucide-react.js', but to 'Error: Can't resolve './vendor-chunks/lucide-react' in 'c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server'' instead. Resolving dependencies are ignored for this path.
+<w>  at resolve commonjs file ./vendor-chunks/lucide-react (expected c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server\vendor-chunks\lucide-react.js)
+<w>  at file dependencies c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server\webpack-runtime.js
+<w>  at file c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server\webpack-runtime.js
+<w>  at file dependencies c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server\app\page.js
+<w>  at file c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server\app\page.js
+<w>  at file dependencies c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\require.js
+<w>  at file c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\require.js
+<w>  at file dependencies c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\load-components.js
+<w>  at file c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\load-components.js
+<w>  at file dependencies c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\build\utils.js
+<w>  at file c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\build\utils.js
+<w>  at file dependencies c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\build\webpack\loaders\next-route-loader\index.js
+<w>  at file c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\build\webpack\loaders\next-route-loader\index.js
+<w>  at resolve commonjs c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\build\webpack\loaders\next-route-loader\index.js
+<w> [webpack.cache.PackFileCacheStrategy/webpack.FileSystemInfo] Resolving './vendor-chunks/tailwind-merge' in c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server for build dependencies doesn't lead to expected result 'c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server\vendor-chunks\tailwind-merge.js', but to 'Error: Can't resolve './vendor-chunks/tailwind-merge' in 'c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server'' instead. Resolving dependencies are ignored for this path.
+<w>  at resolve commonjs file ./vendor-chunks/tailwind-merge (expected c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server\vendor-chunks\tailwind-merge.js)
+<w>  at file dependencies c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server\webpack-runtime.js
+<w>  at file c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server\webpack-runtime.js
+<w>  at file dependencies c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server\app\page.js
+<w>  at file c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\.next\server\app\page.js
+<w>  at file dependencies c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\require.js
+<w>  at file c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\require.js
+<w>  at file dependencies c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\load-components.js
+<w>  at file c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\server\load-components.js
+<w>  at file dependencies c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\build\utils.js
+<w>  at file c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\build\utils.js
+<w>  at file dependencies c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\build\webpack\loaders\next-route-loader\index.js
+<w>  at file c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\build\webpack\loaders\next-route-loader\index.js
+<w>  at resolve commonjs c:\Users\robel\Desktop\alem pharma\alem-pharmacy-pms\node_modules\next\dist\build\webpack\loaders\next-route-loader\index.js

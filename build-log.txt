@@ -1,0 +1,10 @@
+
+> alem-pharmacy-pms@1.0.0 build
+> node -e "require('fs').rmSync('.next', { recursive: true, force: true })" && next build
+
+  ▲ Next.js 14.2.5
+  - Environments: .env.local
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully
+   Linting and checking validity of types ...

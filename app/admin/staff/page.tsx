@@ -1,0 +1,69 @@
+"use client";
+
+import { AppShell } from "@/components/layout/AppShell";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Users, UserPlus, ShieldCheck } from "lucide-react";
+import { useStore } from "@/lib/store";
+import { Badge } from "@/components/ui/badge";
+
+export default function AdminStaffPage() {
+  const { staffProfiles } = useStore();
+
+  return (
+    <AppShell requiredRole="admin">
+      <div className="flex flex-col gap-6">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Staff & User Management</h1>
+          <p className="text-sm text-muted">Manage clinical staff credentials, roles, and authorization status.</p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card>
+            <CardContent className="flex items-center gap-3 p-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-500/20 text-teal-400">
+                <Users className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{staffProfiles.length}</p>
+                <p className="text-xs text-muted">Total Registered Accounts</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="flex items-center gap-3 p-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-400">
+                <ShieldCheck className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">
+                  {staffProfiles.filter(s => s.status === "active").length}
+                </p>
+                <p className="text-xs text-muted">Active Authorized Staff</p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-foreground">Staff Roster</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            {staffProfiles.map((staff) => (
+              <div key={staff.id} className="flex items-center justify-between p-3 rounded-lg border border-border bg-surface-container-high/50">
+                <div>
+                  <p className="text-sm font-medium">{staff.name}</p>
+                  <p className="text-xs text-muted">{staff.email}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="primary" className="uppercase text-[10px]">{staff.role}</Badge>
+                  <Badge variant={staff.status === "active" ? "success" : "destructive"}>{staff.status}</Badge>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+    </AppShell>
+  );
+}
