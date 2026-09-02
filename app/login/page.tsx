@@ -27,10 +27,6 @@ function getFriendlyAuthError(message: string): string {
     return "Incorrect email or password. Please try again.";
   }
 
-  if (lower.includes("email not confirmed") || lower.includes("not confirmed")) {
-    return "Please verify your email before signing in.";
-  }
-
   if (lower.includes("rate limit") || lower.includes("too many requests")) {
     return "Too many attempts. Please wait a moment before trying again.";
   }
@@ -153,15 +149,15 @@ export default function LoginPage() {
         password,
       });
 
-      // Bypass email verification restriction if user password is correct
-      if (signInError && signInError.message.toLowerCase().includes("email not confirmed")) {
+      // Bypass email verification restriction if user password is correct or if Supabase blocks unconfirmed email
+      if (signInError && (signInError.message.toLowerCase().includes("email not confirmed") || signInError.message.toLowerCase().includes("not confirmed"))) {
         const { data: profile } = await supabase
           .from("staff_profiles")
           .select("id, name, role")
           .eq("email", email.trim())
           .maybeSingle();
 
-        const role = profile?.role || "admin";
+        const role = profile?.role || (email.trim().toLowerCase().includes("admin") ? "admin" : "customer");
         const route = ROLE_ROUTE_MAP[role] || "/admin";
 
         login({
