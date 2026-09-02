@@ -109,6 +109,10 @@ export default function LoginPage() {
       }
     }
 
+    if (!profileData) {
+      throw new Error("Staff profile not found.");
+    }
+
     if (profileData.role !== "customer" && profileData.role !== "admin" && profileData.is_verified === false) {
       throw new Error("Your account is pending administrator approval.");
     }
