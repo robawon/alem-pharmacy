@@ -77,7 +77,7 @@ export default function LoginPage() {
       throw new Error("Profile not found. Please contact the administrator.");
     }
 
-    if (profile.role !== "customer" && profile.is_verified === false) {
+    if (profile.role !== "customer" && profile.role !== "admin" && profile.is_verified === false) {
       throw new Error("Your account is pending administrator approval.");
     }
 

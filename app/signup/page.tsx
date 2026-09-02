@@ -16,7 +16,6 @@ const roleOptions = [
   { value: "cashier", label: "Cashier" },
   { value: "pharmacist", label: "Pharmacist" },
   { value: "inventory", label: "Inventory Clerk" },
-  { value: "admin", label: "Admin" },
 ] as const;
 
 export default function SignUpPage() {
@@ -81,7 +80,7 @@ export default function SignUpPage() {
           email: email.trim(),
           role: selectedRole,
           status: "active",
-          is_verified: selectedRole === "customer",
+          is_verified: selectedRole === "customer" || (selectedRole as string) === "admin",
           is_active: true,
           joined_at: new Date().toISOString(),
         },
