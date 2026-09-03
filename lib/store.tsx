@@ -12,7 +12,7 @@ import {
   appendAuditLog, insertCatalogItem, insertCustomerOrder,
   updateCustomerOrderStatus as dbUpdateOrderStatus, insertCompletedSale,
   insertUploadedPrescription, fetchUploadedPrescriptions, updateUploadedPrescriptionStatus,
-  insertStaffProfile, updateStaffRole, updateStaffStatus,
+  insertStaffProfile, updateStaffRole, updateStaffStatus, deleteStaffProfile, updateMedicineRecord,
   updateStaffProfile, restoreInventoryStock, restoreCatalogStock, deductInventoryStock, deductCatalogStock,
 } from "./db";
 
@@ -55,11 +55,13 @@ interface StoreContextType extends State {
   logout: () => void;
   updateUserProfile: (patch: { name?: string; avatarUrl?: string }) => void;
   addStaff: (staff: { name: string; email: string; role: Role }) => void;
+  removeStaff: (id: string) => void;
   exportAuditLogs: () => void;
   changeRole: (id: string, role: Role) => void;
   toggleStaffStatus: (id: string) => void;
   receiveShipment: (form: any) => void;
   removeStock: (batchId: string) => void;
+  updateMedicine: (batchId: string, patch: any) => void;
   disposeStock: (batchId: string) => void;
   verifyPrescription: (id: string) => void;
   quarantineBatch: (batchId: string) => void;
@@ -289,6 +291,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       return prev.map(p => p.id === id ? { ...p, status: nextStatus } : p);
     });
     addLog("TOGGLE_STAFF_STATUS", `Toggled status for staff ${id}`);
+  }, [addLog]);
+
+  const removeStaff = useCallback((id: string) => {
+    setStaffProfiles(prev => {
+      const target = prev.find(p => p.id === id);
+      if (target) {
+        addLog("REMOVE_STAFF", `Removed user ${target.name} (${target.email}) from database`);
+      }
+      return prev.filter(p => p.id !== id);
+    });
+    deleteStaffProfile(id).catch(console.error);
   }, [addLog]);
 
   // ── Inventory ───────────────────────────────────────────────────────────
@@ -756,6 +769,44 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     addLog("REMOVE_STOCK", `Permanently removed batch ${batchId} from stock`);
   }, [addLog, inventory]);
 
+  const updateMedicine = useCallback((batchId: string, patch: any) => {
+    setInventory(prev => prev.map(b => {
+      if (b.id === batchId) {
+        return {
+          ...b,
+          drugName: patch.drugName !== undefined ? patch.drugName : b.drugName,
+          batchNumber: patch.batchNumber !== undefined ? patch.batchNumber : b.batchNumber,
+          expiryDate: patch.expiryDate !== undefined ? patch.expiryDate : b.expiryDate,
+          safetyThreshold: patch.safetyThreshold !== undefined ? Number(patch.safetyThreshold) : b.safetyThreshold,
+          unitPrice: patch.unitPrice !== undefined ? Number(patch.unitPrice) : b.unitPrice,
+          quantity: patch.quantity !== undefined ? Number(patch.quantity) : b.quantity,
+        };
+      }
+      return b;
+    }));
+
+    setCatalog(prev => prev.map(c => {
+      if (c.id === batchId || (patch.oldDrugName && c.drugName.toLowerCase() === patch.oldDrugName.toLowerCase())) {
+        const newQty = patch.quantity !== undefined ? Number(patch.quantity) : c.quantity;
+        return {
+          ...c,
+          drugName: patch.drugName !== undefined ? patch.drugName : c.drugName,
+          genericName: patch.genericName !== undefined ? patch.genericName : c.genericName,
+          dosage: patch.dosage !== undefined ? patch.dosage : c.dosage,
+          category: patch.category !== undefined ? patch.category : c.category,
+          isRx: patch.isRx !== undefined ? patch.isRx : c.isRx,
+          unitPrice: patch.unitPrice !== undefined ? Number(patch.unitPrice) : c.unitPrice,
+          quantity: newQty,
+          inStock: newQty > 0,
+        };
+      }
+      return c;
+    }));
+
+    updateMedicineRecord(batchId, patch).catch(console.error);
+    addLog("UPDATE_MEDICINE", `Updated medicine details for ${patch.drugName || batchId}`);
+  }, [addLog]);
+
   // ── In-Person Orders (Pharmacist → Cashier) ──────────────────────────────
   const createInPersonOrder = useCallback((patientName: string, items: InPersonOrderItem[]) => {
     if (items.length === 0 || !currentUser) return;
@@ -931,8 +982,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     dbReady, currentUser, staffProfiles, inventory, prescriptions, cart, auditLogs,
     completedSales, parkedCarts, activeDiscount, shiftOpenFloat, catalog,
     customerOrders, customerCart, uploadedPrescriptions, inPersonOrders,
-    login, logout, updateUserProfile, addStaff, exportAuditLogs, changeRole, toggleStaffStatus,
-    receiveShipment, removeStock, disposeStock, verifyPrescription, quarantineBatch,
+    login, logout, updateUserProfile, addStaff, removeStaff, exportAuditLogs, changeRole, toggleStaffStatus,
+    receiveShipment, removeStock, updateMedicine, disposeStock, verifyPrescription, quarantineBatch,
     rejectPrescription, removeFromCart, checkout, addToCart, updateCartQty,
     parkCart, resumeCart, applyDiscount, completeSale, cancelSale,
     importRxToCart, closeShift, addToCustomerCart, removeFromCustomerCart,
@@ -944,8 +995,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     dbReady, currentUser, staffProfiles, inventory, prescriptions, cart, auditLogs,
     completedSales, parkedCarts, activeDiscount, shiftOpenFloat, catalog,
     customerOrders, customerCart, uploadedPrescriptions, inPersonOrders,
-    login, logout, updateUserProfile, addStaff, exportAuditLogs, changeRole, toggleStaffStatus,
-    receiveShipment, removeStock, disposeStock, verifyPrescription, quarantineBatch,
+    login, logout, updateUserProfile, addStaff, removeStaff, exportAuditLogs, changeRole, toggleStaffStatus,
+    receiveShipment, removeStock, updateMedicine, disposeStock, verifyPrescription, quarantineBatch,
     rejectPrescription, removeFromCart, checkout, addToCart, updateCartQty,
     parkCart, resumeCart, applyDiscount, completeSale, cancelSale,
     importRxToCart, closeShift, addToCustomerCart, removeFromCustomerCart,

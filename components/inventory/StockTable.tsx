@@ -1,13 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search, Trash2, AlertTriangle } from "lucide-react";
+import { Search, Trash2, AlertTriangle, Pencil } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useStore } from "@/lib/store";
 import { currency } from "@/lib/utils";
+import { EditMedicineDialog } from "@/components/ui/EditMedicineDialog";
+import { StockBatch } from "@/lib/types";
 
 function isExpired(dateStr: string): boolean {
   return new Date(dateStr).getTime() < Date.now();
@@ -18,9 +20,12 @@ function isLowStock(quantity: number, threshold: number): boolean {
 }
 
 export function StockTable() {
-  const { inventory, disposeStock, removeStock } = useStore();
+  const { inventory, disposeStock, removeStock, currentUser } = useStore();
   const [query, setQuery] = useState("");
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
+  const [editingBatch, setEditingBatch] = useState<StockBatch | null>(null);
+
+  const isAdmin = currentUser?.role === "admin";
 
   const handleRemoveStock = (batchId: string) => {
     if (confirmRemoveId === batchId) {
@@ -96,6 +101,17 @@ export function StockTable() {
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-2">
+                    {isAdmin && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 border-teal-500/40 text-teal-300 hover:bg-teal-500/20"
+                        onClick={() => setEditingBatch(batch)}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        Edit Med
+                      </Button>
+                    )}
                     <Button
                       variant="outline"
                       size="sm"
@@ -129,6 +145,12 @@ export function StockTable() {
           )}
         </TableBody>
       </Table>
+
+      <EditMedicineDialog
+        batch={editingBatch}
+        open={!!editingBatch}
+        onClose={() => setEditingBatch(null)}
+      />
     </div>
   );
 }

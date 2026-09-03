@@ -257,6 +257,58 @@ export async function updateStaffProfile(
   if (error) console.error("updateStaffProfile:", error.message);
 }
 
+export async function deleteStaffProfile(id: string) {
+  const { error } = await supabase.from("staff_profiles").delete().eq("id", id);
+  if (error) console.error("deleteStaffProfile:", error.message);
+}
+
+export async function updateMedicineRecord(
+  batchId: string,
+  patch: {
+    drugName?: string;
+    genericName?: string;
+    dosage?: string;
+    category?: string;
+    isRx?: boolean;
+    unitPrice?: number;
+    quantity?: number;
+    batchNumber?: string;
+    expiryDate?: string;
+    safetyThreshold?: number;
+  }
+) {
+  const invPatch: Record<string, any> = {};
+  if (patch.drugName !== undefined) invPatch.drug_name = patch.drugName;
+  if (patch.batchNumber !== undefined) invPatch.batch_number = patch.batchNumber;
+  if (patch.expiryDate !== undefined) invPatch.expiry_date = patch.expiryDate;
+  if (patch.safetyThreshold !== undefined) invPatch.safety_threshold = patch.safetyThreshold;
+  if (patch.unitPrice !== undefined) invPatch.unit_price = patch.unitPrice;
+  if (patch.quantity !== undefined) invPatch.quantity = patch.quantity;
+
+  if (Object.keys(invPatch).length > 0) {
+    const { error: invErr } = await supabase.from("inventory").update(invPatch).eq("id", batchId);
+    if (invErr) console.error("updateMedicineRecord (inventory):", invErr.message);
+  }
+
+  const catPatch: Record<string, any> = {};
+  if (patch.drugName !== undefined) catPatch.drug_name = patch.drugName;
+  if (patch.genericName !== undefined) catPatch.generic_name = patch.genericName;
+  if (patch.dosage !== undefined) catPatch.dosage = patch.dosage;
+  if (patch.category !== undefined) catPatch.category = patch.category;
+  if (patch.isRx !== undefined) catPatch.is_rx = patch.isRx;
+  if (patch.unitPrice !== undefined) catPatch.unit_price = patch.unitPrice;
+  if (patch.quantity !== undefined) {
+    catPatch.quantity = patch.quantity;
+    catPatch.in_stock = patch.quantity > 0;
+  }
+
+  if (Object.keys(catPatch).length > 0) {
+    const { error: catErr } = await supabase.from("catalog_items").update(catPatch).eq("id", batchId);
+    if (catErr) console.error("updateMedicineRecord (catalog):", catErr.message);
+  }
+}
+
+
 export async function updatePrescriptionStatus(
   id: string,
   status: string,

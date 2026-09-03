@@ -14,6 +14,7 @@ import {
   Plus,
   ShieldAlert,
   TerminalSquare,
+  Trash2,
   UserPlus,
   Users,
   Wallet,
@@ -97,7 +98,7 @@ export default function AdminDashboardPage() {
 }
 
 function AdminDashboardContent() {
-  const { inventory, auditLogs, staffProfiles, completedSales, changeRole, toggleStaffStatus, currentUser } = useStore();
+  const { inventory, auditLogs, staffProfiles, completedSales, changeRole, toggleStaffStatus, removeStaff, currentUser } = useStore();
   const [showAddMedicine, setShowAddMedicine] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -509,6 +510,17 @@ function AdminDashboardContent() {
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => setToastMessage(`Terminal assignment is managed from the live staff record, ${profile.name}.`)}>
                             <TerminalSquare className="mr-2 h-4 w-4" /> Assign Terminal / Shift
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-rose-400 focus:text-rose-300 focus:bg-rose-950/60 font-medium"
+                            onClick={() => {
+                              if (confirm(`Are you sure you want to remove user "${profile.name}" from the database?`)) {
+                                removeStaff(profile.id);
+                                setToastMessage(`Removed user ${profile.name} from the database.`);
+                              }
+                            }}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4 text-rose-400" /> Remove User
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
