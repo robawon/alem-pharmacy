@@ -125,7 +125,21 @@ export interface ParkedCart {
   parkedAt: string;
 }
 
-export type DrugCategory = "otc" | "prescription" | "vitamins" | "first_aid";
+export type DrugCategory =
+  | "anti_diabetics"
+  | "anti_biotic"
+  | "anti_pain"
+  | "anti_protozal"
+  | "cns_drugs"
+  | "cv"
+  | "dermatology"
+  | "eye_ear_nasal"
+  | "gi"
+  | "hormonal_drug"
+  | "medical_equipment"
+  | "respiratory_drug"
+  | "vitamins_minerals"
+  | "cosmetics";
 
 export interface CatalogItem {
   id: string;

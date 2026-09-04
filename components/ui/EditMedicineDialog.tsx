@@ -22,10 +22,20 @@ interface Props {
 }
 
 const CATEGORIES: { value: DrugCategory; label: string }[] = [
-  { value: "otc",          label: "Over-the-Counter (OTC)" },
-  { value: "prescription", label: "Prescription (Rx)" },
-  { value: "vitamins",     label: "Vitamins & Supplements" },
-  { value: "first_aid",    label: "First Aid" },
+  { value: "anti_diabetics",    label: "Anti Diabetics" },
+  { value: "anti_biotic",       label: "Anti Biotic" },
+  { value: "anti_pain",         label: "Anti Pain" },
+  { value: "anti_protozal",     label: "Anti Protozoal" },
+  { value: "cns_drugs",         label: "CNS Drugs" },
+  { value: "cv",                label: "CV" },
+  { value: "dermatology",       label: "Dermatology" },
+  { value: "eye_ear_nasal",     label: "Eye-Ear and Nasal Preparation Drugs" },
+  { value: "gi",                label: "GI" },
+  { value: "hormonal_drug",     label: "Hormonal Drug" },
+  { value: "medical_equipment", label: "Medical Equipment" },
+  { value: "respiratory_drug",  label: "Respiratory Drug" },
+  { value: "vitamins_minerals", label: "Vitamin and Minerals" },
+  { value: "cosmetics",         label: "Cosmetics" },
 ];
 
 export function EditMedicineDialog({ batch, open, onClose }: Props) {
@@ -34,8 +44,8 @@ export function EditMedicineDialog({ batch, open, onClose }: Props) {
     drugName: "",
     genericName: "",
     dosage: "",
-    category: "otc" as DrugCategory,
-    isRx: false,
+    category: "anti_biotic" as DrugCategory,
+    isRx: true,
     unitPrice: "",
     quantity: "",
     batchNumber: "",
@@ -47,12 +57,13 @@ export function EditMedicineDialog({ batch, open, onClose }: Props) {
   useEffect(() => {
     if (batch) {
       const catItem = catalog.find((c) => c.drugName.toLowerCase() === batch.drugName.toLowerCase());
+      const cat = catItem?.category || "anti_biotic";
       setForm({
         drugName: batch.drugName || "",
         genericName: catItem?.genericName || batch.drugName || "",
         dosage: catItem?.dosage || "",
-        category: catItem?.category || (catItem?.isRx ? "prescription" : "otc"),
-        isRx: catItem?.isRx ?? false,
+        category: cat,
+        isRx: cat !== "cosmetics",
         unitPrice: batch.unitPrice !== undefined ? String(batch.unitPrice) : "",
         quantity: batch.quantity !== undefined ? String(batch.quantity) : "",
         batchNumber: batch.batchNumber || "",
@@ -65,7 +76,7 @@ export function EditMedicineDialog({ batch, open, onClose }: Props) {
   if (!batch) return null;
 
   const handleCategoryChange = (val: DrugCategory) => {
-    setForm((f) => ({ ...f, category: val, isRx: val === "prescription" }));
+    setForm((f) => ({ ...f, category: val, isRx: val !== "cosmetics" }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -74,13 +85,14 @@ export function EditMedicineDialog({ batch, open, onClose }: Props) {
       alert("Drug name cannot be empty.");
       return;
     }
+    const isRxItem = form.category !== "cosmetics";
     updateMedicine(batch.id, {
       oldDrugName: batch.drugName,
       drugName: form.drugName,
       genericName: form.genericName,
       dosage: form.dosage,
       category: form.category,
-      isRx: form.category === "prescription",
+      isRx: isRxItem,
       unitPrice: Number(form.unitPrice) || 0,
       quantity: Number(form.quantity) || 0,
       batchNumber: form.batchNumber,
@@ -185,7 +197,7 @@ export function EditMedicineDialog({ batch, open, onClose }: Props) {
               </div>
             </div>
 
-            {form.category === "prescription" && (
+            {form.category !== "cosmetics" && (
               <div className="flex items-center gap-2 rounded-xl border border-amber-500/25 bg-amber-500/8 px-3.5 py-2.5 text-xs text-amber-300">
                 <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/30 text-[10px]">Rx Required</Badge>
                 Prescription verification required before dispensing.

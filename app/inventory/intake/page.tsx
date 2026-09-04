@@ -10,13 +10,15 @@ import { Badge } from "@/components/ui/badge";
 import { Truck, PackagePlus, CheckCircle2, Hash, Building2, CalendarDays, Layers } from "lucide-react";
 import { useStore } from "@/lib/store";
 
+import { DrugCategory } from "@/lib/types";
+
 export default function ReceiveShipmentsPage() {
   const { receiveShipment } = useStore();
   const [form, setForm] = useState({
     drugName: "",
     genericName: "",
     dosage: "",
-    category: "otc" as "otc" | "prescription" | "vitamins" | "first_aid",
+    category: "anti_biotic" as DrugCategory,
     batchNumber: "",
     quantity: "",
     supplier: "",
@@ -32,7 +34,7 @@ export default function ReceiveShipmentsPage() {
       genericName: form.genericName,
       dosage: form.dosage,
       category: form.category,
-      isRx: form.category === "prescription",
+      isRx: form.category !== "cosmetics",
       batchNumber: form.batchNumber,
       quantity: Number(form.quantity),
       unitPrice: Number(form.unitPrice),
@@ -41,7 +43,7 @@ export default function ReceiveShipmentsPage() {
       quarantined: false,
     });
     setSubmitted(true);
-    setForm({ drugName: "", genericName: "", dosage: "", category: "otc", batchNumber: "", quantity: "", supplier: "", expiryDate: "", unitPrice: "" });
+    setForm({ drugName: "", genericName: "", dosage: "", category: "anti_biotic", batchNumber: "", quantity: "", supplier: "", expiryDate: "", unitPrice: "" });
     setTimeout(() => setSubmitted(false), 3000);
   };
 

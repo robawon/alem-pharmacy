@@ -89,19 +89,52 @@ export default function PosPage() {
   const cartTotal = taxableAmount + tax;
 
   // ─── Category filter ────────────────────────────────────────────
-  const categories = ["All", "OTC Meds", "Prescriptions", "First Aid", "Vitamins"];
+  const categories = [
+    "All",
+    "Anti Diabetics",
+    "Anti Biotic",
+    "Anti Pain",
+    "Anti Protozoal",
+    "CNS Drugs",
+    "CV",
+    "Dermatology",
+    "Eye-Ear & Nasal",
+    "GI",
+    "Hormonal Drug",
+    "Medical Equipment",
+    "Respiratory Drug",
+    "Vitamin & Minerals",
+    "Cosmetics",
+  ];
+
+  const categoryValueMap: Record<string, string> = {
+    "Anti Diabetics": "anti_diabetics",
+    "Anti Biotic": "anti_biotic",
+    "Anti Pain": "anti_pain",
+    "Anti Protozoal": "anti_protozal",
+    "CNS Drugs": "cns_drugs",
+    "CV": "cv",
+    "Dermatology": "dermatology",
+    "Eye-Ear & Nasal": "eye_ear_nasal",
+    "GI": "gi",
+    "Hormonal Drug": "hormonal_drug",
+    "Medical Equipment": "medical_equipment",
+    "Respiratory Drug": "respiratory_drug",
+    "Vitamin & Minerals": "vitamins_minerals",
+    "Cosmetics": "cosmetics",
+  };
+
   const filteredInventory = store.inventory.filter((b) => {
     // Never show zero-stock or quarantined batches
     if (b.quantity <= 0 || b.quarantined) return false;
     const matchesSearch = b.drugName.toLowerCase().includes(searchQuery.toLowerCase().trim());
     if (!matchesSearch) return false;
     if (activeCategory === "All") return true;
-    const name = b.drugName.toLowerCase();
-    if (activeCategory === "OTC Meds") return name.includes("paracetamol") || name.includes("ibuprofen");
-    if (activeCategory === "Prescriptions") return name.includes("amoxicillin") || name.includes("warfarin") || name.includes("metformin") || name.includes("insulin");
-    if (activeCategory === "First Aid") return name.includes("bandage") || name.includes("antiseptic");
-    if (activeCategory === "Vitamins") return name.includes("vitamin") || name.includes("supplement");
-    return true;
+
+    const catItem = store.catalog.find(c => c.drugName.toLowerCase() === b.drugName.toLowerCase());
+    const itemCat = catItem?.category;
+    const targetCat = categoryValueMap[activeCategory];
+    return itemCat === targetCat;
   });
 
   // ─── Load a ready order into the POS cart ───────────────────────

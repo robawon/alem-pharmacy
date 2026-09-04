@@ -49,19 +49,39 @@ import {
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 const CATEGORY_FILTERS: { label: string; value: DrugCategory | "all" }[] = [
-  { label: "All", value: "all" },
-  { label: "Over-the-Counter", value: "otc" },
-  { label: "Prescription Rx", value: "prescription" },
-  { label: "Vitamins", value: "vitamins" },
-  { label: "First Aid", value: "first_aid" },
+  { label: "All Categories", value: "all" },
+  { label: "Anti Diabetics", value: "anti_diabetics" },
+  { label: "Anti Biotic", value: "anti_biotic" },
+  { label: "Anti Pain", value: "anti_pain" },
+  { label: "Anti Protozoal", value: "anti_protozal" },
+  { label: "CNS Drugs", value: "cns_drugs" },
+  { label: "CV", value: "cv" },
+  { label: "Dermatology", value: "dermatology" },
+  { label: "Eye-Ear & Nasal Prep", value: "eye_ear_nasal" },
+  { label: "GI", value: "gi" },
+  { label: "Hormonal Drug", value: "hormonal_drug" },
+  { label: "Medical Equipment", value: "medical_equipment" },
+  { label: "Respiratory Drug", value: "respiratory_drug" },
+  { label: "Vitamin & Minerals", value: "vitamins_minerals" },
+  { label: "Cosmetics", value: "cosmetics" },
 ];
 
 const CATEGORY_COLORS: Record<DrugCategory | "all", string> = {
   all: "border-primary/30 bg-primary/10 text-primary-fixed-dim",
-  otc: "border-success/30 bg-success/10 text-success",
-  prescription: "border-purple-400/30 bg-purple-500/10 text-purple-300",
-  vitamins: "border-tertiary/30 bg-tertiary/10 text-tertiary",
-  first_aid: "border-red-400/30 bg-red-500/10 text-red-300",
+  anti_diabetics: "border-blue-400/30 bg-blue-500/10 text-blue-300",
+  anti_biotic: "border-purple-400/30 bg-purple-500/10 text-purple-300",
+  anti_pain: "border-amber-400/30 bg-amber-500/10 text-amber-300",
+  anti_protozal: "border-red-400/30 bg-red-500/10 text-red-300",
+  cns_drugs: "border-indigo-400/30 bg-indigo-500/10 text-indigo-300",
+  cv: "border-rose-400/30 bg-rose-500/10 text-rose-300",
+  dermatology: "border-pink-400/30 bg-pink-500/10 text-pink-300",
+  eye_ear_nasal: "border-cyan-400/30 bg-cyan-500/10 text-cyan-300",
+  gi: "border-orange-400/30 bg-orange-500/10 text-orange-300",
+  hormonal_drug: "border-violet-400/30 bg-violet-500/10 text-violet-300",
+  medical_equipment: "border-slate-400/30 bg-slate-500/10 text-slate-300",
+  respiratory_drug: "border-teal-400/30 bg-teal-500/10 text-teal-300",
+  vitamins_minerals: "border-tertiary/30 bg-tertiary/10 text-tertiary",
+  cosmetics: "border-success/30 bg-success/10 text-success",
 };
 
 const ORDER_STEPS = [
@@ -384,6 +404,7 @@ function PortalContent() {
         onSubmit={(data) => {
           uploadCustomerPrescription(data);
           setRxUploadOpen(false);
+          setCartOpen(true);
         }}
       />
 
@@ -448,17 +469,37 @@ const CATEGORY_BADGE_VARIANT: Record<
   DrugCategory,
   "default" | "primary" | "success" | "destructive" | "warning"
 > = {
-  otc: "success",
-  prescription: "primary",
-  vitamins: "warning",
-  first_aid: "destructive",
+  anti_diabetics: "primary",
+  anti_biotic: "primary",
+  anti_pain: "warning",
+  anti_protozal: "destructive",
+  cns_drugs: "primary",
+  cv: "destructive",
+  dermatology: "warning",
+  eye_ear_nasal: "default",
+  gi: "warning",
+  hormonal_drug: "primary",
+  medical_equipment: "default",
+  respiratory_drug: "primary",
+  vitamins_minerals: "warning",
+  cosmetics: "success",
 };
 
 const CATEGORY_LABEL: Record<DrugCategory, string> = {
-  otc: "OTC",
-  prescription: "Rx Required",
-  vitamins: "Vitamin",
-  first_aid: "First Aid",
+  anti_diabetics: "Anti Diabetics",
+  anti_biotic: "Anti Biotic",
+  anti_pain: "Anti Pain",
+  anti_protozal: "Anti Protozoal",
+  cns_drugs: "CNS Drug",
+  cv: "CV",
+  dermatology: "Dermatology",
+  eye_ear_nasal: "Eye/Ear/Nasal",
+  gi: "GI",
+  hormonal_drug: "Hormonal",
+  medical_equipment: "Medical Equip",
+  respiratory_drug: "Respiratory",
+  vitamins_minerals: "Vitamin & Mineral",
+  cosmetics: "Cosmetics",
 };
 
 function MedicationCard({ item, onAddToCart, onUploadRx }: MedicationCardProps) {
@@ -992,8 +1033,8 @@ function CartPanel({ cart, subtotal, onRemove, onUpdateQty, onPlaceOrder, onOpen
         ) : (
           <>
             <div className="flex items-center gap-2 text-xs text-muted bg-surface-container rounded-lg px-3 py-2">
-              <AlertTriangle className="h-3.5 w-3.5 text-tertiary shrink-0" />
-              <span>Rx items cannot be added here. Use the prescription upload flow.</span>
+              <CheckCircle2 className="h-3.5 w-3.5 text-success shrink-0" />
+              <span>You can adjust quantities (+ / -) for all prescription & cosmetics items in your cart below.</span>
             </div>
             <Button
               className="w-full gap-2 bg-primary/20 border border-primary/40 text-primary-fixed-dim hover:bg-primary/30 font-semibold"

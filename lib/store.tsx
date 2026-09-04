@@ -78,7 +78,7 @@ interface StoreContextType extends State {
   importRxToCart: (rxId: string) => void;
   closeShift: (closingCash: number) => void;
   // Portal / Customer actions
-  addToCustomerCart: (catalogId: string) => void;
+  addToCustomerCart: (catalogId: string, quantityToAdd?: number, ignoreRxCheck?: boolean) => void;
   removeFromCustomerCart: (catalogId: string) => void;
   updateCustomerCartQty: (catalogId: string, delta: number) => void;
   placeCustomerOrder: (contactInfo: CustomerContactInfo, prescriptionFile?: { fileName: string; notes: string }) => void;
@@ -508,14 +508,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [cart, activeDiscount, addLog, currentUser]);
 
   // ── Customer / Portal ────────────────────────────────────────────────────
-  const addToCustomerCart = useCallback((catalogId: string) => {
+  const addToCustomerCart = useCallback((catalogId: string, quantityToAdd: number = 1, ignoreRxCheck: boolean = false) => {
     const item = catalog.find(c => c.id === catalogId);
-    if (!item || item.isRx || !item.inStock || item.quantity <= 0) return;
+    if (!item || (!ignoreRxCheck && item.isRx) || !item.inStock || item.quantity <= 0) return;
+
+    const addQty = Math.min(item.quantity, Math.max(1, quantityToAdd));
 
     // Real-time stock reduction in catalog state
     setCatalog(prev => prev.map(c => {
       if (c.id === catalogId) {
-        const newQty = Math.max(0, c.quantity - 1);
+        const newQty = Math.max(0, c.quantity - addQty);
         return { ...c, quantity: newQty, inStock: newQty > 0 };
       }
       return c;
@@ -526,24 +528,24 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const idx = prev.findIndex(b => b.drugName.toLowerCase() === item.drugName.toLowerCase() && b.quantity > 0 && !b.quarantined);
       if (idx !== -1) {
         const updated = [...prev];
-        const newQty = Math.max(0, updated[idx].quantity - 1);
+        const newQty = Math.max(0, updated[idx].quantity - addQty);
         updated[idx] = { ...updated[idx], quantity: newQty };
-        deductInventoryStock(updated[idx].id, 1).catch(console.error);
+        deductInventoryStock(updated[idx].id, addQty).catch(console.error);
         return updated;
       }
       return prev;
     });
 
-    deductCatalogStock(catalogId, 1).catch(console.error);
+    deductCatalogStock(catalogId, addQty).catch(console.error);
 
     setCustomerCart(prev => {
       const existing = prev.find(i => i.batchId === catalogId);
       if (existing) {
-        return prev.map(i => i.batchId === catalogId ? { ...i, quantity: i.quantity + 1 } : i);
+        return prev.map(i => i.batchId === catalogId ? { ...i, quantity: i.quantity + addQty } : i);
       }
-      return [...prev, { batchId: catalogId, drugName: item.drugName, unitPrice: item.unitPrice, quantity: 1 }];
+      return [...prev, { batchId: catalogId, drugName: item.drugName, unitPrice: item.unitPrice, quantity: addQty }];
     });
-    addLog("CUSTOMER_CART_UPDATED", `Customer added ${item.drugName} to cart — stock reduced by 1 unit`);
+    addLog("CUSTOMER_CART_UPDATED", `Customer added ${item.drugName} (qty: ${addQty}) to cart — stock reduced by ${addQty} unit(s)`);
   }, [catalog, addLog]);
 
   const removeFromCustomerCart = useCallback((catalogId: string) => {
@@ -704,13 +706,35 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       }).catch(console.error);
       addLog("PRESCRIPTION_UPLOADED", `Customer uploaded Rx: ${upload.fileName} (Qty: ${upload.requestedQuantity || 1}) — Dr. ${upload.doctorName}`);
 
+      const reqQty = upload.requestedQuantity || 1;
+      const targetName = upload.targetDrugName;
+
+      // Find matching item in catalog and add directly to customerCart
+      let matchingItem = targetName ? catalog.find(c => c.drugName.toLowerCase() === targetName.toLowerCase()) : undefined;
+      if (!matchingItem && targetName) {
+        matchingItem = catalog.find(c => c.drugName.toLowerCase().includes(targetName.toLowerCase()));
+      }
+
+      if (matchingItem) {
+        addToCustomerCart(matchingItem.id, reqQty, true);
+      } else if (targetName) {
+        // Fallback item entry for customer cart if catalog item not found by exact name
+        setCustomerCart(prev => {
+          const existing = prev.find(i => i.drugName.toLowerCase() === targetName.toLowerCase());
+          if (existing) {
+            return prev.map(i => i.drugName.toLowerCase() === targetName.toLowerCase() ? { ...i, quantity: i.quantity + reqQty } : i);
+          }
+          return [...prev, { batchId: `rx_${Date.now()}`, drugName: targetName, unitPrice: 5.0, quantity: reqQty }];
+        });
+      }
+
       // Auto-create a customer order for pharmacist review when prescription is submitted
       const orderId = newId("ord");
       const now = new Date().toISOString();
       const order: CustomerOrder = {
         id: orderId,
         patientName: currentUser?.name || "Patient",
-        items: upload.targetDrugName ? [upload.targetDrugName] : [],
+        items: targetName ? [targetName] : ["Uploaded Prescription Medication"],
         isRx: true,
         status: "pharmacist_review",
         createdAt: now,
@@ -729,7 +753,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       insertCustomerOrder(order).catch(console.error);
       addLog("CUSTOMER_ORDER_PLACED", `Order ${orderId} auto-created from prescription upload for pharmacist review`);
     },
-    [addLog, currentUser]
+    [addLog, currentUser, catalog, addToCustomerCart]
   );
 
   const addCatalogItem = useCallback((item: Omit<CatalogItem, "id">) => {

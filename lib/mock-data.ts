@@ -79,20 +79,23 @@ export const initialAuditLogs: AuditLogEntry[] = [
 ];
 
 export const initialCatalog: CatalogItem[] = [
-  { id: "cat_001", drugName: "Paracetamol 500mg", genericName: "Acetaminophen", dosage: "500mg", category: "otc", isRx: false, unitPrice: 0.8, quantity: 980, inStock: true },
-  { id: "cat_002", drugName: "Ibuprofen 400mg", genericName: "Ibuprofen", dosage: "400mg", category: "otc", isRx: false, unitPrice: 1.1, quantity: 512, inStock: true },
-  { id: "cat_003", drugName: "Loratadine 10mg", genericName: "Loratadine", dosage: "10mg", category: "otc", isRx: false, unitPrice: 0.5, quantity: 340, inStock: true },
-  { id: "cat_004", drugName: "Amoxicillin 500mg", genericName: "Amoxicillin", dosage: "500mg", category: "prescription", isRx: true, unitPrice: 2.5, quantity: 420, inStock: true },
-  { id: "cat_005", drugName: "Metformin 850mg", genericName: "Metformin HCl", dosage: "850mg", category: "prescription", isRx: true, unitPrice: 1.9, quantity: 18, inStock: true },
-  { id: "cat_006", drugName: "Warfarin 5mg", genericName: "Warfarin Sodium", dosage: "5mg", category: "prescription", isRx: true, unitPrice: 4.2, quantity: 65, inStock: true },
-  { id: "cat_007", drugName: "Insulin Glargine", genericName: "Insulin Glargine", dosage: "100U/mL", category: "prescription", isRx: true, unitPrice: 18.75, quantity: 22, inStock: true },
-  { id: "cat_008", drugName: "Vitamin D3 1000IU", genericName: "Cholecalciferol", dosage: "1000IU", category: "vitamins", isRx: false, unitPrice: 0.3, quantity: 650, inStock: true },
-  { id: "cat_009", drugName: "Vitamin C 500mg", genericName: "Ascorbic Acid", dosage: "500mg", category: "vitamins", isRx: false, unitPrice: 0.25, quantity: 720, inStock: true },
-  { id: "cat_010", drugName: "Multivitamin Daily", genericName: "Multivitamin", dosage: "1 tablet", category: "vitamins", isRx: false, unitPrice: 0.6, quantity: 410, inStock: true },
-  { id: "cat_011", drugName: "First Aid Bandages", genericName: "Adhesive Bandage", dosage: "Assorted", category: "first_aid", isRx: false, unitPrice: 2.0, quantity: 200, inStock: true },
-  { id: "cat_012", drugName: "Antiseptic Cream", genericName: "Bacitracin", dosage: "1oz tube", category: "first_aid", isRx: false, unitPrice: 3.5, quantity: 150, inStock: true },
-  { id: "cat_013", drugName: "Cetirizine 10mg", genericName: "Cetirizine HCl", dosage: "10mg", category: "otc", isRx: false, unitPrice: 0.45, quantity: 280, inStock: true },
-  { id: "cat_014", drugName: "Omeprazole 20mg", genericName: "Omeprazole", dosage: "20mg", category: "otc", isRx: false, unitPrice: 0.9, quantity: 195, inStock: true },
+  { id: "cat_001", drugName: "Paracetamol 500mg", genericName: "Acetaminophen", dosage: "500mg", category: "anti_pain", isRx: true, unitPrice: 0.8, quantity: 980, inStock: true },
+  { id: "cat_002", drugName: "Ibuprofen 400mg", genericName: "Ibuprofen", dosage: "400mg", category: "anti_pain", isRx: true, unitPrice: 1.1, quantity: 512, inStock: true },
+  { id: "cat_003", drugName: "Loratadine 10mg", genericName: "Loratadine", dosage: "10mg", category: "respiratory_drug", isRx: true, unitPrice: 0.5, quantity: 340, inStock: true },
+  { id: "cat_004", drugName: "Amoxicillin 500mg", genericName: "Amoxicillin", dosage: "500mg", category: "anti_biotic", isRx: true, unitPrice: 2.5, quantity: 420, inStock: true },
+  { id: "cat_005", drugName: "Metformin 850mg", genericName: "Metformin HCl", dosage: "850mg", category: "anti_diabetics", isRx: true, unitPrice: 1.9, quantity: 18, inStock: true },
+  { id: "cat_006", drugName: "Warfarin 5mg", genericName: "Warfarin Sodium", dosage: "5mg", category: "cv", isRx: true, unitPrice: 4.2, quantity: 65, inStock: true },
+  { id: "cat_007", drugName: "Insulin Glargine", genericName: "Insulin Glargine", dosage: "100U/mL", category: "anti_diabetics", isRx: true, unitPrice: 18.75, quantity: 22, inStock: true },
+  { id: "cat_008", drugName: "Vitamin D3 1000IU", genericName: "Cholecalciferol", dosage: "1000IU", category: "vitamins_minerals", isRx: true, unitPrice: 0.3, quantity: 650, inStock: true },
+  { id: "cat_009", drugName: "Vitamin C 500mg", genericName: "Ascorbic Acid", dosage: "500mg", category: "vitamins_minerals", isRx: true, unitPrice: 0.25, quantity: 720, inStock: true },
+  { id: "cat_010", drugName: "Multivitamin Daily", genericName: "Multivitamin", dosage: "1 tablet", category: "vitamins_minerals", isRx: true, unitPrice: 0.6, quantity: 410, inStock: true },
+  { id: "cat_011", drugName: "First Aid Bandages", genericName: "Adhesive Bandage", dosage: "Assorted", category: "medical_equipment", isRx: true, unitPrice: 2.0, quantity: 200, inStock: true },
+  { id: "cat_012", drugName: "Antiseptic Cream", genericName: "Bacitracin", dosage: "1oz tube", category: "dermatology", isRx: true, unitPrice: 3.5, quantity: 150, inStock: true },
+  { id: "cat_013", drugName: "Metronidazole 500mg", genericName: "Metronidazole", dosage: "500mg", category: "anti_protozal", isRx: true, unitPrice: 1.45, quantity: 280, inStock: true },
+  { id: "cat_014", drugName: "Omeprazole 20mg", genericName: "Omeprazole", dosage: "20mg", category: "gi", isRx: true, unitPrice: 0.9, quantity: 195, inStock: true },
+  { id: "cat_015", drugName: "Hydrating Facial Cream", genericName: "Skin Care Lotion", dosage: "200ml", category: "cosmetics", isRx: false, unitPrice: 12.50, quantity: 150, inStock: true },
+  { id: "cat_016", drugName: "Sunscreen Shield SPF50", genericName: "UV Protection Lotion", dosage: "100ml", category: "cosmetics", isRx: false, unitPrice: 15.00, quantity: 220, inStock: true },
+  { id: "cat_017", drugName: "Nasal Spray Relief", genericName: "Oxymetazoline", dosage: "15ml", category: "eye_ear_nasal", isRx: true, unitPrice: 4.50, quantity: 90, inStock: true },
 ];
 
 export const initialCustomerOrders: CustomerOrder[] = [

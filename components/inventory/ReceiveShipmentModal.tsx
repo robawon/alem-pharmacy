@@ -14,12 +14,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useStore } from "@/lib/store";
+import { DrugCategory } from "@/lib/types";
 
 const emptyForm = {
   drugName: "",
   genericName: "",
   dosage: "",
-  category: "otc" as "otc" | "prescription" | "vitamins" | "first_aid",
+  category: "anti_biotic" as DrugCategory,
   batchNumber: "",
   expiryDate: "",
   safetyThreshold: "",
@@ -47,7 +48,7 @@ export function ReceiveShipmentModal() {
       genericName: form.genericName,
       dosage: form.dosage,
       category: form.category,
-      isRx: form.category === "prescription",
+      isRx: form.category !== "cosmetics",
       batchNumber: form.batchNumber.trim(),
       expiryDate: form.expiryDate,
       safetyThreshold: Number(form.safetyThreshold),

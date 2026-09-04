@@ -21,10 +21,20 @@ interface Props {
 }
 
 const CATEGORIES: { value: DrugCategory; label: string }[] = [
-  { value: "otc",          label: "Over-the-Counter (OTC)" },
-  { value: "prescription", label: "Prescription (Rx)" },
-  { value: "vitamins",     label: "Vitamins & Supplements" },
-  { value: "first_aid",    label: "First Aid" },
+  { value: "anti_diabetics",    label: "Anti Diabetics" },
+  { value: "anti_biotic",       label: "Anti Biotic" },
+  { value: "anti_pain",         label: "Anti Pain" },
+  { value: "anti_protozal",     label: "Anti Protozoal" },
+  { value: "cns_drugs",         label: "CNS Drugs" },
+  { value: "cv",                label: "CV" },
+  { value: "dermatology",       label: "Dermatology" },
+  { value: "eye_ear_nasal",     label: "Eye-Ear and Nasal Preparation Drugs" },
+  { value: "gi",                label: "GI" },
+  { value: "hormonal_drug",     label: "Hormonal Drug" },
+  { value: "medical_equipment", label: "Medical Equipment" },
+  { value: "respiratory_drug",  label: "Respiratory Drug" },
+  { value: "vitamins_minerals", label: "Vitamin and Minerals" },
+  { value: "cosmetics",         label: "Cosmetics" },
 ];
 
 const EMPTY = {
@@ -41,7 +51,7 @@ const EMPTY = {
 export function AddMedicineToStockDialog({ open, onClose }: Props) {
   const { receiveShipment } = useStore();
   const [form, setForm] = useState(EMPTY);
-  const [category, setCategory] = useState<DrugCategory>("otc");
+  const [category, setCategory] = useState<DrugCategory>("anti_biotic");
   const [submitted, setSubmitted] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -67,14 +77,12 @@ export function AddMedicineToStockDialog({ open, onClose }: Props) {
       return;
     }
 
-    // Call receiveShipment which is designed for adding stock batches
-    // This also syncs to the catalog so it appears on the customer portal
     receiveShipment({
       drugName: form.drugName,
       genericName: form.genericName,
       dosage: form.dosage,
       category,
-      isRx: category === "prescription",
+      isRx: category !== "cosmetics",
       batchNumber: form.batchNumber || `BATCH-${Date.now()}`,
       expiryDate: form.expiryDate,
       safetyThreshold: Number(form.safetyThreshold) || 10,
@@ -87,7 +95,7 @@ export function AddMedicineToStockDialog({ open, onClose }: Props) {
     setTimeout(() => {
       setSubmitted(false);
       setForm(EMPTY);
-      setCategory("otc");
+      setCategory("anti_biotic");
       onClose();
     }, 1800);
   };
@@ -198,7 +206,7 @@ export function AddMedicineToStockDialog({ open, onClose }: Props) {
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => { setForm(EMPTY); setCategory("otc"); onClose(); }}>
+              <Button type="button" variant="outline" onClick={() => { setForm(EMPTY); setCategory("anti_biotic"); onClose(); }}>
                 Cancel
               </Button>
               <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700">
