@@ -153,6 +153,17 @@ export function AddMedicineToStockDialog({ open, onClose }: Props) {
                   />
                 </div>
                 <div className="flex flex-col gap-1.5">
+                  <Label className="text-xs text-muted">Category *</Label>
+                  <Select value={category} onValueChange={(val) => setCategory(val as DrugCategory)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {CATEGORIES.map((c) => (
+                        <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-1.5">
                   <Label className="text-xs text-muted">Batch Number</Label>
                   <Input 
                     placeholder="e.g. CFT-2026-001" 

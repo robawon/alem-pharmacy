@@ -13,8 +13,32 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useStore } from "@/lib/store";
 import { DrugCategory } from "@/lib/types";
+
+const CATEGORIES: { value: DrugCategory; label: string }[] = [
+  { value: "anti_diabetics",    label: "Anti Diabetics" },
+  { value: "anti_biotic",       label: "Anti Biotic" },
+  { value: "anti_pain",         label: "Anti Pain" },
+  { value: "anti_protozal",     label: "Anti Protozoal" },
+  { value: "cns_drugs",         label: "CNS Drugs" },
+  { value: "cv",                label: "CV" },
+  { value: "dermatology",       label: "Dermatology" },
+  { value: "eye_ear_nasal",     label: "Eye-Ear and Nasal Preparation Drugs" },
+  { value: "gi",                label: "GI" },
+  { value: "hormonal_drug",     label: "Hormonal Drug" },
+  { value: "medical_equipment", label: "Medical Equipment" },
+  { value: "respiratory_drug",  label: "Respiratory Drug" },
+  { value: "vitamins_minerals", label: "Vitamin and Minerals" },
+  { value: "cosmetics",         label: "Cosmetics" },
+];
 
 const emptyForm = {
   drugName: "",
@@ -80,6 +104,20 @@ export function ReceiveShipmentModal() {
               onChange={(e) => setForm({ ...form, drugName: e.target.value })}
               placeholder="e.g. Ceftriaxone 1g"
             />
+          </div>
+          <div className="col-span-2 flex flex-col gap-2">
+            <Label htmlFor="category">Category</Label>
+            <Select
+              value={form.category}
+              onValueChange={(val: DrugCategory) => setForm({ ...form, category: val })}
+            >
+              <SelectTrigger id="category"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {CATEGORIES.map((c) => (
+                  <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="batchNumber">Batch number</Label>
