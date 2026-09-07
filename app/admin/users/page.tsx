@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle2, Loader2, ShieldAlert, XCircle } from "lucide-react";
+import { CheckCircle2, KeyRound, Loader2, ShieldAlert, XCircle } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/client";
+import { AdminResetPasswordModal, TargetUser } from "@/components/admin/AdminResetPasswordModal";
 
 type PendingUser = {
   id: string;
@@ -19,6 +20,8 @@ export default function AdminUserApprovalPage() {
   const [users, setUsers] = useState<PendingUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [resetModalOpen, setResetModalOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<TargetUser | null>(null);
 
   async function fetchPendingUsers() {
     setLoading(true);
@@ -85,6 +88,16 @@ export default function AdminUserApprovalPage() {
       setError(message);
     }
   }
+
+  const handleOpenResetModal = (user: PendingUser) => {
+    setSelectedUser({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+    });
+    setResetModalOpen(true);
+  };
 
   useEffect(() => {
     fetchPendingUsers();
@@ -154,6 +167,17 @@ export default function AdminUserApprovalPage() {
                         <XCircle className="mr-2 h-4 w-4" />
                         Reject
                       </Button>
+
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
+                        onClick={() => handleOpenResetModal(user)}
+                        title="Reset password for this pending user"
+                      >
+                        <KeyRound className="h-4 w-4 mr-1" />
+                        Reset Password
+                      </Button>
                     </div>
                   </div>
                 ))}
@@ -162,6 +186,12 @@ export default function AdminUserApprovalPage() {
           </CardContent>
         </Card>
       </div>
+
+      <AdminResetPasswordModal
+        isOpen={resetModalOpen}
+        onClose={() => setResetModalOpen(false)}
+        targetUser={selectedUser}
+      />
     </AppShell>
   );
 }

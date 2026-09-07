@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { Mail, User, LogOut, ArrowLeft, ShoppingCart, Save, X, CheckCircle2, Pencil } from "lucide-react";
+import { ChangePasswordSection } from "@/components/profile/ChangePasswordSection";
 
 export default function CashierProfilePage() {
   return (
@@ -208,6 +209,9 @@ function CashierProfileContent() {
           )}
         </CardContent>
       </Card>
+
+      {/* Change Password */}
+      <ChangePasswordSection />
 
       <Card className="bg-slate-900 border-slate-700">
         <CardHeader>

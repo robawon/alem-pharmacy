@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { Mail, User, LogOut, ArrowLeft, Pill, Save, X, CheckCircle2, Pencil } from "lucide-react";
+import { ChangePasswordSection } from "@/components/profile/ChangePasswordSection";
 
 export default function PharmacistProfilePage() {
   return (
