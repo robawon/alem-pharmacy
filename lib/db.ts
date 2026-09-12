@@ -16,6 +16,7 @@ function toStockBatch(r: any): StockBatch {
     id: r.id, drugName: r.drug_name, batchNumber: r.batch_number,
     expiryDate: r.expiry_date, safetyThreshold: r.safety_threshold,
     unitPrice: Number(r.unit_price), quantity: r.quantity, quarantined: r.quarantined,
+    category: r.category ?? undefined,
   };
 }
 
@@ -135,8 +136,27 @@ export async function insertInventoryBatch(batch: StockBatch) {
     id: batch.id, drug_name: batch.drugName, batch_number: batch.batchNumber,
     expiry_date: batch.expiryDate, safety_threshold: batch.safetyThreshold,
     unit_price: batch.unitPrice, quantity: batch.quantity, quarantined: batch.quarantined,
+    category: batch.category ?? null,
   });
   if (error) console.error("insertInventoryBatch:", error.message);
+}
+
+export async function updateCatalogItem(
+  catalogId: string,
+  patch: Partial<{ category: string; unitPrice: number; quantity: number; inStock: boolean; drugName: string }>
+) {
+  const dbPatch: Record<string, any> = {};
+  if (patch.category !== undefined) dbPatch.category = patch.category;
+  if (patch.unitPrice !== undefined) dbPatch.unit_price = patch.unitPrice;
+  if (patch.quantity !== undefined) {
+    dbPatch.quantity = patch.quantity;
+    dbPatch.in_stock = patch.quantity > 0;
+  }
+  if (patch.inStock !== undefined) dbPatch.in_stock = patch.inStock;
+  if (patch.drugName !== undefined) dbPatch.drug_name = patch.drugName;
+
+  const { error } = await supabase.from("catalog_items").update(dbPatch).eq("id", catalogId);
+  if (error) console.error("updateCatalogItem:", error.message);
 }
 
 export async function updateInventoryBatch(id: string, patch: Partial<{ quantity: number; quarantined: boolean }>) {

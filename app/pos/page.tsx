@@ -131,10 +131,10 @@ export default function PosPage() {
     if (!matchesSearch) return false;
     if (activeCategory === "All") return true;
 
-    const catItem = store.catalog.find(c => c.drugName.toLowerCase() === b.drugName.toLowerCase());
-    const itemCat = catItem?.category;
+    const catItem = store.catalog.find(c => c.drugName.trim().toLowerCase() === b.drugName.trim().toLowerCase());
+    const itemCat = b.category || catItem?.category;
     const targetCat = categoryValueMap[activeCategory];
-    return itemCat === targetCat;
+    return itemCat === targetCat || itemCat === activeCategory;
   });
 
   // ─── Load a ready order into the POS cart ───────────────────────

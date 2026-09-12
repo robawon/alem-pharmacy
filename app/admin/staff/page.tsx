@@ -4,7 +4,7 @@ import { useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Users, ShieldCheck, KeyRound } from "lucide-react";
+import { Users, ShieldCheck, KeyRound, Wifi, Clock3 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { Badge } from "@/components/ui/badge";
 import { AdminResetPasswordModal, TargetUser } from "@/components/admin/AdminResetPasswordModal";
@@ -71,6 +71,10 @@ export default function AdminStaffPage() {
                   <p className="text-xs text-muted">{staff.email}</p>
                 </div>
                 <div className="flex items-center gap-2">
+                  <Badge variant={staff.isOnline && staff.status === "active" ? "success" : "default"} className="gap-1 text-[10px]">
+                    {staff.isOnline && staff.status === "active" ? <Wifi className="h-3 w-3" /> : <Clock3 className="h-3 w-3" />}
+                    {staff.isOnline && staff.status === "active" ? "Online" : "Offline"}
+                  </Badge>
                   <Badge variant="primary" className="uppercase text-[10px]">{staff.role}</Badge>
                   <Badge variant={staff.status === "active" ? "success" : "destructive"}>{staff.status}</Badge>
                   <Button

@@ -14,6 +14,7 @@ import {
   insertUploadedPrescription, fetchUploadedPrescriptions, updateUploadedPrescriptionStatus,
   insertStaffProfile, updateStaffRole, updateStaffStatus, deleteStaffProfile, updateMedicineRecord,
   updateStaffProfile, restoreInventoryStock, restoreCatalogStock, deductInventoryStock, deductCatalogStock,
+  updateCatalogItem,
 } from "./db";
 
 const IN_PERSON_ORDERS_KEY = "alem-pharmacy-in-person-orders";
@@ -211,6 +212,57 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // ── Real-Time Online/Offline Presence Tracking ────────────────────────────
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const supabase = createClient();
+    const presenceKey = currentUser?.id || `guest-${Math.random().toString(36).substring(2, 9)}`;
+
+    const presenceChannel = supabase.channel("online-presence-room", {
+      config: {
+        presence: { key: presenceKey },
+      },
+    });
+
+    const syncPresenceState = () => {
+      const state = presenceChannel.presenceState();
+      const activeIds = new Set<string>();
+      Object.values(state).forEach((presences: any) => {
+        presences.forEach((p: any) => {
+          if (p.userId) activeIds.add(p.userId);
+        });
+      });
+      setOnlineUserIds(activeIds);
+    };
+
+    presenceChannel
+      .on("presence", { event: "sync" }, syncPresenceState)
+      .on("presence", { event: "join" }, syncPresenceState)
+      .on("presence", { event: "leave" }, syncPresenceState)
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED" && currentUser?.id) {
+          await presenceChannel.track({
+            userId: currentUser.id,
+            name: currentUser.name,
+            role: currentUser.role,
+            onlineAt: new Date().toISOString(),
+          });
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(presenceChannel);
+    };
+  }, [currentUser]);
+
+  const staffProfilesWithPresence = useMemo(() => {
+    return staffProfiles.map((staff) => ({
+      ...staff,
+      isOnline: onlineUserIds.has(staff.id) || (currentUser ? currentUser.id === staff.id : false),
+    }));
+  }, [staffProfiles, onlineUserIds, currentUser]);
+
   // ── Audit log helper ────────────────────────────────────────────────────
   const addLog = useCallback((action_type: string, payload_delta: string) => {
     const entry: AuditLogEntry = {
@@ -313,16 +365,28 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
     // Also sync to catalog so it appears on the customer portal
     setCatalog(prev => {
-      const existing = prev.find(c => c.drugName.toLowerCase() === (form.drugName || "").toLowerCase());
+      const existing = prev.find(c => c.drugName.trim().toLowerCase() === (form.drugName || "").trim().toLowerCase());
       if (existing) {
         const newPrice = Number(form.unitPrice);
-        // Update existing catalog item with new quantity and price
+        const updatedCat = form.category || existing.category;
+        const newQty = existing.quantity + (Number(form.quantity) || 0);
+        const finalPrice = !isNaN(newPrice) && newPrice > 0 ? newPrice : existing.unitPrice;
+
         const updated: CatalogItem = {
           ...existing,
-          quantity: existing.quantity + (Number(form.quantity) || 0),
-          unitPrice: !isNaN(newPrice) && newPrice > 0 ? newPrice : existing.unitPrice,
-          inStock: true,
+          category: updatedCat,
+          quantity: newQty,
+          unitPrice: finalPrice,
+          inStock: newQty > 0,
         };
+
+        updateCatalogItem(existing.id, {
+          category: updatedCat,
+          unitPrice: finalPrice,
+          quantity: newQty,
+          inStock: newQty > 0,
+        }).catch(console.error);
+
         return prev.map(c => c.id === existing.id ? updated : c);
       }
       // Create a new catalog entry from the stock batch
@@ -1008,7 +1072,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(() => ({
-    dbReady, currentUser, staffProfiles, inventory, prescriptions, cart, auditLogs,
+    dbReady, currentUser, staffProfiles: staffProfilesWithPresence, inventory, prescriptions, cart, auditLogs,
     completedSales, parkedCarts, activeDiscount, shiftOpenFloat, catalog,
     customerOrders, customerCart, uploadedPrescriptions, inPersonOrders,
     login, logout, updateUserProfile, addStaff, removeStaff, exportAuditLogs, changeRole, toggleStaffStatus,
@@ -1021,7 +1085,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     createInPersonOrder, receiveInPersonOrder, completeInPersonOrder, cancelInPersonOrder,
     refreshDashboardData,
   }), [
-    dbReady, currentUser, staffProfiles, inventory, prescriptions, cart, auditLogs,
+    dbReady, currentUser, staffProfilesWithPresence, inventory, prescriptions, cart, auditLogs,
     completedSales, parkedCarts, activeDiscount, shiftOpenFloat, catalog,
     customerOrders, customerCart, uploadedPrescriptions, inPersonOrders,
     login, logout, updateUserProfile, addStaff, removeStaff, exportAuditLogs, changeRole, toggleStaffStatus,
