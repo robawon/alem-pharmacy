@@ -263,6 +263,48 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }));
   }, [staffProfiles, onlineUserIds, currentUser]);
 
+  // ── Unified Customer Catalog (Merges Catalog & Registered Stock Inventory) ─────
+  const unifiedCatalog = useMemo(() => {
+    const map = new Map<string, CatalogItem>();
+
+    // 1. Add all explicit catalog items
+    catalog.forEach((item) => {
+      map.set(item.drugName.trim().toLowerCase(), item);
+    });
+
+    // 2. Merge in all registered stock items from inventory so they appear on customer portal
+    inventory.forEach((batch) => {
+      if (batch.quantity <= 0 || batch.quarantined) return;
+      const key = batch.drugName.trim().toLowerCase();
+      const existing = map.get(key);
+
+      if (existing) {
+        const totalQty = Math.max(existing.quantity, batch.quantity);
+        map.set(key, {
+          ...existing,
+          category: batch.category || existing.category,
+          quantity: totalQty,
+          unitPrice: batch.unitPrice > 0 ? batch.unitPrice : existing.unitPrice,
+          inStock: totalQty > 0,
+        });
+      } else {
+        map.set(key, {
+          id: `cat_inv_${batch.id}`,
+          drugName: batch.drugName,
+          genericName: batch.drugName,
+          dosage: "",
+          category: batch.category || "anti_biotic",
+          isRx: batch.category ? batch.category !== "cosmetics" : true,
+          unitPrice: batch.unitPrice || 0,
+          quantity: batch.quantity || 0,
+          inStock: batch.quantity > 0,
+        });
+      }
+    });
+
+    return Array.from(map.values());
+  }, [catalog, inventory]);
+
   // ── Audit log helper ────────────────────────────────────────────────────
   const addLog = useCallback((action_type: string, payload_delta: string) => {
     const entry: AuditLogEntry = {
@@ -573,23 +615,26 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   // ── Customer / Portal ────────────────────────────────────────────────────
   const addToCustomerCart = useCallback((catalogId: string, quantityToAdd: number = 1, ignoreRxCheck: boolean = false) => {
-    const item = catalog.find(c => c.id === catalogId);
+    const item = unifiedCatalog.find(c => c.id === catalogId || c.drugName.trim().toLowerCase() === catalogId.trim().toLowerCase());
     if (!item || (!ignoreRxCheck && item.isRx) || !item.inStock || item.quantity <= 0) return;
 
     const addQty = Math.min(item.quantity, Math.max(1, quantityToAdd));
 
     // Real-time stock reduction in catalog state
-    setCatalog(prev => prev.map(c => {
-      if (c.id === catalogId) {
-        const newQty = Math.max(0, c.quantity - addQty);
-        return { ...c, quantity: newQty, inStock: newQty > 0 };
+    setCatalog(prev => {
+      const idx = prev.findIndex(c => c.id === catalogId || c.drugName.trim().toLowerCase() === item.drugName.trim().toLowerCase());
+      if (idx !== -1) {
+        const updated = [...prev];
+        const newQty = Math.max(0, updated[idx].quantity - addQty);
+        updated[idx] = { ...updated[idx], quantity: newQty, inStock: newQty > 0 };
+        return updated;
       }
-      return c;
-    }));
+      return prev;
+    });
 
     // Real-time stock reduction in inventory state
     setInventory(prev => {
-      const idx = prev.findIndex(b => b.drugName.toLowerCase() === item.drugName.toLowerCase() && b.quantity > 0 && !b.quarantined);
+      const idx = prev.findIndex(b => b.drugName.trim().toLowerCase() === item.drugName.trim().toLowerCase() && b.quantity > 0 && !b.quarantined);
       if (idx !== -1) {
         const updated = [...prev];
         const newQty = Math.max(0, updated[idx].quantity - addQty);
@@ -600,7 +645,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       return prev;
     });
 
-    deductCatalogStock(catalogId, addQty).catch(console.error);
+    if (!catalogId.startsWith("cat_inv_")) {
+      deductCatalogStock(catalogId, addQty).catch(console.error);
+    }
 
     setCustomerCart(prev => {
       const existing = prev.find(i => i.batchId === catalogId);
@@ -610,7 +657,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       return [...prev, { batchId: catalogId, drugName: item.drugName, unitPrice: item.unitPrice, quantity: addQty }];
     });
     addLog("CUSTOMER_CART_UPDATED", `Customer added ${item.drugName} (qty: ${addQty}) to cart — stock reduced by ${addQty} unit(s)`);
-  }, [catalog, addLog]);
+  }, [unifiedCatalog, addLog]);
 
   const removeFromCustomerCart = useCallback((catalogId: string) => {
     // 1. Locate current cart item outside nested state updaters
@@ -1073,7 +1120,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo(() => ({
     dbReady, currentUser, staffProfiles: staffProfilesWithPresence, inventory, prescriptions, cart, auditLogs,
-    completedSales, parkedCarts, activeDiscount, shiftOpenFloat, catalog,
+    completedSales, parkedCarts, activeDiscount, shiftOpenFloat, catalog: unifiedCatalog,
     customerOrders, customerCart, uploadedPrescriptions, inPersonOrders,
     login, logout, updateUserProfile, addStaff, removeStaff, exportAuditLogs, changeRole, toggleStaffStatus,
     receiveShipment, removeStock, updateMedicine, disposeStock, verifyPrescription, quarantineBatch,
@@ -1086,7 +1133,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     refreshDashboardData,
   }), [
     dbReady, currentUser, staffProfilesWithPresence, inventory, prescriptions, cart, auditLogs,
-    completedSales, parkedCarts, activeDiscount, shiftOpenFloat, catalog,
+    completedSales, parkedCarts, activeDiscount, shiftOpenFloat, unifiedCatalog,
     customerOrders, customerCart, uploadedPrescriptions, inPersonOrders,
     login, logout, updateUserProfile, addStaff, removeStaff, exportAuditLogs, changeRole, toggleStaffStatus,
     receiveShipment, removeStock, updateMedicine, disposeStock, verifyPrescription, quarantineBatch,
