@@ -13,13 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { CategorySelect } from "@/components/ui/CategorySelect";
 import { useStore } from "@/lib/store";
 import { DrugCategory } from "@/lib/types";
 
@@ -107,17 +101,10 @@ export function ReceiveShipmentModal() {
           </div>
           <div className="col-span-2 flex flex-col gap-2">
             <Label htmlFor="category">Category</Label>
-            <Select
+            <CategorySelect
               value={form.category}
-              onValueChange={(val: DrugCategory) => setForm({ ...form, category: val })}
-            >
-              <SelectTrigger id="category"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {CATEGORIES.map((c) => (
-                  <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              onChange={(val: DrugCategory) => setForm({ ...form, category: val })}
+            />
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="batchNumber">Batch number</Label>

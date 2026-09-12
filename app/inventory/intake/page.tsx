@@ -9,27 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Truck, PackagePlus, CheckCircle2, Hash, Building2, CalendarDays, Layers } from "lucide-react";
 import { useStore } from "@/lib/store";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+import { CategorySelect } from "@/components/ui/CategorySelect";
 import { DrugCategory } from "@/lib/types";
-
-const CATEGORIES: { value: DrugCategory; label: string }[] = [
-  { value: "anti_diabetics",    label: "Anti Diabetics" },
-  { value: "anti_biotic",       label: "Anti Biotic" },
-  { value: "anti_pain",         label: "Anti Pain" },
-  { value: "anti_protozal",     label: "Anti Protozoal" },
-  { value: "cns_drugs",         label: "CNS Drugs" },
-  { value: "cv",                label: "CV" },
-  { value: "dermatology",       label: "Dermatology" },
-  { value: "eye_ear_nasal",     label: "Eye-Ear and Nasal Preparation Drugs" },
-  { value: "gi",                label: "GI" },
-  { value: "hormonal_drug",     label: "Hormonal Drug" },
-  { value: "medical_equipment", label: "Medical Equipment" },
-  { value: "respiratory_drug",  label: "Respiratory Drug" },
-  { value: "vitamins_minerals", label: "Vitamin and Minerals" },
-  { value: "cosmetics",         label: "Cosmetics" },
-];
 
 export default function ReceiveShipmentsPage() {
   const { receiveShipment } = useStore();
@@ -100,17 +81,10 @@ export default function ReceiveShipmentsPage() {
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label className="text-xs text-muted">Category</Label>
-                  <Select
+                  <CategorySelect
                     value={form.category}
-                    onValueChange={(val: DrugCategory) => setForm({ ...form, category: val })}
-                  >
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {CATEGORIES.map((c) => (
-                        <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    onChange={(val: DrugCategory) => setForm({ ...form, category: val })}
+                  />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label className="text-xs text-muted">Batch Number</Label>

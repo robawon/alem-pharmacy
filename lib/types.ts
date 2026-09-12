@@ -38,6 +38,7 @@ export interface AuditLogEntry {
 export interface StockBatch {
   id: string;
   drugName: string;
+  category?: DrugCategory;
   batchNumber: string;
   expiryDate: string; // ISO date
   safetyThreshold: number;

@@ -9,7 +9,9 @@ import { ReceiveShipmentModal } from "@/components/inventory/ReceiveShipmentModa
 import { AuditLogPanel } from "@/components/audit/AuditLogPanel";
 import { AddMedicineDialog } from "@/components/ui/AddMedicineDialog";
 import { useStore } from "@/lib/store";
-import { Plus, Pill } from "lucide-react";
+import Link from "next/link";
+import { Logo } from "@/components/ui/Logo";
+import { Plus, Pill, ArrowLeft } from "lucide-react";
 
 export default function InventoryPage() {
   return (
@@ -20,15 +22,28 @@ export default function InventoryPage() {
 }
 
 function InventoryContent() {
-  const { auditLogs } = useStore();
+  const { auditLogs, currentUser } = useStore();
   const [showAddMedicine, setShowAddMedicine] = useState(false);
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground">Stock & Batch Control</h1>
-          <p className="text-sm text-muted">Filterable inventory of every drug batch, with expiry and safety-threshold tracking.</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/admin"
+            className="group flex items-center gap-2.5 rounded-xl border border-teal-500/30 bg-teal-500/10 px-3.5 py-2 text-xs font-semibold text-teal-300 transition-all hover:bg-teal-500/20 hover:border-teal-500/50 shadow-sm shrink-0"
+            title="Return to Admin Dashboard"
+          >
+            <Logo size={28} />
+            <span className="flex items-center gap-1">
+              <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-0.5" />
+              Admin Dashboard
+            </span>
+          </Link>
+          <div>
+            <h1 className="text-2xl font-semibold text-foreground">Stock & Batch Control</h1>
+            <p className="text-sm text-muted">Filterable inventory of every drug batch, with expiry and safety-threshold tracking.</p>
+          </div>
         </div>
         <Button
           onClick={() => setShowAddMedicine(true)}

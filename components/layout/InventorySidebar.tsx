@@ -13,6 +13,7 @@ import {
   Menu,
   X,
   UserCircle,
+  ArrowLeft,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { Badge } from "@/components/ui/badge";
@@ -70,17 +71,27 @@ export function InventorySidebar() {
     <div className="flex h-full flex-col bg-slate-900 text-white border-r border-slate-800 p-4">
       {/* Brand Header */}
       <div className="mb-6 flex items-center justify-between px-2 pt-1">
-        <div className="flex items-center gap-3">
-          <Logo size={40} />
-          <div>
-            <h2 className="text-base font-bold leading-tight tracking-tight text-white">
+        <Link
+          href={currentUser?.role === "admin" ? "/admin" : "/admin"}
+          title="Return to Admin Dashboard"
+          className="group flex items-center gap-3 rounded-xl p-1.5 transition-all duration-200 hover:bg-slate-800/90 border border-transparent hover:border-teal-500/30 cursor-pointer"
+        >
+          <Logo size={40} className="transition-transform group-hover:scale-105 shrink-0" />
+          <div className="flex flex-col min-w-0">
+            <h2 className="text-base font-bold leading-tight tracking-tight text-white group-hover:text-teal-300 transition-colors truncate">
               Alem Pharmacy
             </h2>
-            <span className="text-xs font-semibold text-orange-400 uppercase tracking-widest">
-              Logistics Hub
-            </span>
+            {currentUser?.role === "admin" ? (
+              <span className="text-[11px] font-semibold text-teal-400 flex items-center gap-1 group-hover:underline">
+                <ArrowLeft className="h-3 w-3" /> Back to Dashboard
+              </span>
+            ) : (
+              <span className="text-xs font-semibold text-orange-400 uppercase tracking-widest truncate flex items-center gap-1">
+                <ArrowLeft className="h-3 w-3 text-teal-400" /> Admin Dashboard
+              </span>
+            )}
           </div>
-        </div>
+        </Link>
         {/* Mobile Close Button */}
         <button
           className="md:hidden text-slate-400 hover:text-white p-1"

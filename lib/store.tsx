@@ -766,6 +766,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const newBatch: StockBatch = {
       id: newId("batch"),
       drugName: item.drugName,
+      category: item.category,
       batchNumber: `BATCH-${Date.now()}`,
       expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
       safetyThreshold: 10,
@@ -794,11 +795,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [addLog, inventory]);
 
   const updateMedicine = useCallback((batchId: string, patch: any) => {
+    let targetDrugName = patch.oldDrugName;
     setInventory(prev => prev.map(b => {
       if (b.id === batchId) {
+        if (!targetDrugName) targetDrugName = b.drugName;
         return {
           ...b,
           drugName: patch.drugName !== undefined ? patch.drugName : b.drugName,
+          category: patch.category !== undefined ? patch.category : b.category,
           batchNumber: patch.batchNumber !== undefined ? patch.batchNumber : b.batchNumber,
           expiryDate: patch.expiryDate !== undefined ? patch.expiryDate : b.expiryDate,
           safetyThreshold: patch.safetyThreshold !== undefined ? Number(patch.safetyThreshold) : b.safetyThreshold,
@@ -810,7 +814,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }));
 
     setCatalog(prev => prev.map(c => {
-      if (c.id === batchId || (patch.oldDrugName && c.drugName.toLowerCase() === patch.oldDrugName.toLowerCase())) {
+      const matchName = targetDrugName || patch.drugName;
+      if (c.id === batchId || (matchName && c.drugName.toLowerCase() === matchName.toLowerCase())) {
         const newQty = patch.quantity !== undefined ? Number(patch.quantity) : c.quantity;
         return {
           ...c,
