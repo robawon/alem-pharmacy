@@ -11,6 +11,7 @@ import { Truck, PackagePlus, CheckCircle2, Hash, Building2, CalendarDays, Layers
 import { useStore } from "@/lib/store";
 import { CategorySelect } from "@/components/ui/CategorySelect";
 import { DrugCategory } from "@/lib/types";
+import { calculateTaxStatus } from "@/lib/tax";
 
 export default function ReceiveShipmentsPage() {
   const { receiveShipment } = useStore();
@@ -26,6 +27,8 @@ export default function ReceiveShipmentsPage() {
     unitPrice: "",
   });
   const [submitted, setSubmitted] = useState(false);
+
+  const taxStatus = calculateTaxStatus(form.category, form.drugName);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,9 +61,20 @@ export default function ReceiveShipmentsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Intake Form */}
           <Card className="lg:col-span-2">
-            <CardHeader className="flex-row items-center gap-2">
-              <Truck className="h-5 w-5 text-orange-400" />
-              <CardTitle className="text-foreground">New Shipment Intake</CardTitle>
+            <CardHeader className="flex-row items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Truck className="h-5 w-5 text-orange-400" />
+                <CardTitle className="text-foreground">New Shipment Intake</CardTitle>
+              </div>
+              <Badge
+                className={`text-xs font-semibold ${
+                  taxStatus.hasTax
+                    ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                    : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                }`}
+              >
+                {taxStatus.badgeLabel} {taxStatus.hasTax ? "(15%)" : ""}
+              </Badge>
             </CardHeader>
             <CardContent>
               {submitted && (

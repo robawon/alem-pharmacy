@@ -259,6 +259,34 @@ export default function PosPage() {
           </div>
         )}
 
+        {/* ── In-Person Pharmacist Orders Alert Banner ────────────── */}
+        {store.inPersonOrders.some((o) => o.status === "pending_cashier" || o.status === "ready_for_checkout") && (
+          <div
+            className="flex items-center justify-between gap-3 rounded-2xl border border-amber-500/40 bg-gradient-to-r from-amber-950/70 via-amber-900/40 to-surface-container px-4 py-3 cursor-pointer hover:border-amber-400/60 transition-all animate-pulse"
+            onClick={() => setShowInPersonOrders(true)}
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 shrink-0">
+                <Bell className="h-4 w-4 animate-bounce" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-amber-300">
+                  {store.inPersonOrders.filter((o) => o.status === "pending_cashier" || o.status === "ready_for_checkout").length} In-Person Order(s) Received from Pharmacist
+                </p>
+                <p className="text-xs text-amber-200/70">
+                  Pharmacist sent prescription orders to cashier for immediate checkout
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-amber-500 text-slate-950 text-xs font-bold px-1.5">
+                {store.inPersonOrders.filter((o) => o.status === "pending_cashier" || o.status === "ready_for_checkout").length}
+              </span>
+              <ArrowRight className="h-4 w-4 text-amber-400" />
+            </div>
+          </div>
+        )}
+
         {/* ── In-Person Orders Section ──────────────────────────── */}
         {store.inPersonOrders.length > 0 && (
           <div className="border-t pt-5">

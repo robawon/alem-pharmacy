@@ -37,7 +37,7 @@ export default function PharmacistPage() {
 }
 
 function PharmacistContent() {
-  const { customerOrders, uploadedPrescriptions, updateCustomerOrderStatus, currentUser, inPersonOrders, completedSales, inventory, prescriptions, dbReady } = useStore();
+  const { customerOrders, uploadedPrescriptions, updateCustomerOrderStatus, currentUser, inPersonOrders, cancelInPersonOrder, completedSales, inventory, prescriptions, dbReady } = useStore();
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
   const [inPersonOrderDialogOpen, setInPersonOrderDialogOpen] = useState(false);
   const [addMedicineDialogOpen, setAddMedicineDialogOpen] = useState(false);
@@ -166,6 +166,7 @@ function PharmacistContent() {
                             order.status === "ready_for_checkout" ? { label: "Ready for Checkout", color: "bg-teal-500/20 text-teal-300 border-teal-500/30" } :
                             order.status === "completed" ? { label: "Completed", color: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" } :
                             { label: "Cancelled", color: "bg-red-500/20 text-red-300 border-red-500/30" };
+                const canCancel = order.status === "pending_cashier" || order.status === "ready_for_checkout";
                 return (
                   <div
                     key={order.id}
@@ -182,6 +183,18 @@ function PharmacistContent() {
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <Badge className={`text-[11px] ${cfg.color}`}>{cfg.label}</Badge>
+                      {canCancel && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => cancelInPersonOrder(order.id)}
+                          className="h-7 text-xs border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20 hover:text-red-200 gap-1"
+                          title="Cancel this order"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                          Cancel Order
+                        </Button>
+                      )}
                     </div>
                   </div>
                 );

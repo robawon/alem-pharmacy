@@ -11,7 +11,8 @@ import { Card } from "@/components/ui/card";
 import { useStore } from "@/lib/store";
 import { InPersonOrderItem } from "@/lib/types";
 import { currency } from "@/lib/utils";
-import { Trash2 } from "lucide-react";
+import { calculateTaxStatus } from "@/lib/tax";
+import { Trash2, Tag } from "lucide-react";
 
 interface InPersonOrderDialogProps {
   open: boolean;
@@ -21,7 +22,7 @@ interface InPersonOrderDialogProps {
 export function InPersonOrderDialog({ open, onOpenChange }: InPersonOrderDialogProps) {
   const { inventory, createInPersonOrder } = useStore();
   const [patientName, setPatientName] = useState("");
-  const [selectedItems, setSelectedItems] = useState<InPersonOrderItem[]>([]);
+  const [selectedItems, setSelectedItems] = useState<(InPersonOrderItem & { category?: string })[]>([]);
   const [selectedMedicineId, setSelectedMedicineId] = useState("");
   const [medicineSearch, setMedicineSearch] = useState("");
   const [medicineDropdownOpen, setMedicineDropdownOpen] = useState(false);
@@ -46,7 +47,13 @@ export function InPersonOrderDialog({ open, onOpenChange }: InPersonOrderDialogP
     return selectedItems.reduce((acc, item) => acc + item.unitPrice * item.quantity, 0);
   }, [selectedItems]);
 
-  const tax = useMemo(() => subtotal * 0.15, [subtotal]);
+  const tax = useMemo(() => {
+    return selectedItems.reduce((acc, item) => {
+      const taxRes = calculateTaxStatus(item.category, item.drugName);
+      return acc + (item.unitPrice * item.quantity * taxRes.taxRate);
+    }, 0);
+  }, [selectedItems]);
+
   const total = useMemo(() => subtotal + tax, [subtotal, tax]);
 
   const handleAddItem = () => {
@@ -65,13 +72,14 @@ export function InPersonOrderDialog({ open, onOpenChange }: InPersonOrderDialogP
       return;
     }
 
-    const newItem: InPersonOrderItem = {
+    const newItem = {
       id: `item_${Date.now()}`,
       drugName: selectedMedicine.drugName,
       dosage: selectedMedicine.batchNumber ? `Batch: ${selectedMedicine.batchNumber}` : "",
       genericName: selectedMedicine.drugName,
       unitPrice: selectedMedicine.unitPrice,
       quantity: requestedQty,
+      category: selectedMedicine.category,
     };
 
     setSelectedItems(prev => {

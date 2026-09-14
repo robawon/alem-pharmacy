@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, Pill, Plus } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { DrugCategory } from "@/lib/types";
+import { calculateTaxStatus } from "@/lib/tax";
 
 interface Props {
   open: boolean;
@@ -36,6 +37,8 @@ export function AddMedicineDialog({ open, onClose }: Props) {
   const [form, setForm] = useState(EMPTY);
   const [submitted, setSubmitted] = useState(false);
 
+  const taxStatus = calculateTaxStatus(form.category, form.drugName);
+
   const handleCategoryChange = (val: DrugCategory) => {
     setForm((f) => ({ ...f, category:val, isRx: val !== "cosmetics" }));
   };
@@ -47,6 +50,7 @@ export function AddMedicineDialog({ open, onClose }: Props) {
       return;
     }
     const isRxItem = form.category !== "cosmetics";
+    const evaluatedTax = calculateTaxStatus(form.category, form.drugName);
     addCatalogItem({
       drugName: form.drugName,
       genericName: form.genericName || form.drugName,
@@ -56,7 +60,9 @@ export function AddMedicineDialog({ open, onClose }: Props) {
       unitPrice: Number(form.unitPrice) || 0,
       quantity: Number(form.quantity) || 0,
       inStock: Number(form.quantity) > 0,
-    });
+      hasTax: evaluatedTax.hasTax,
+      taxRate: evaluatedTax.taxRate,
+    } as any);
     setSubmitted(true);
     setTimeout(() => {
       setSubmitted(false);
@@ -90,14 +96,27 @@ export function AddMedicineDialog({ open, onClose }: Props) {
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             {/* Catalog Information Section */}
             <div className="rounded-lg border border-slate-700 bg-slate-900/50 p-3">
-              <p className="text-xs font-semibold text-teal-400 mb-3 uppercase">Catalog & Pricing</p>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold text-teal-400 uppercase">Catalog & Pricing</p>
+                {/* Dynamic Tax Badge Indicator */}
+                <Badge
+                  className={`text-[11px] font-bold px-2.5 py-0.5 transition-all ${
+                    taxStatus.hasTax
+                      ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                      : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                  }`}
+                >
+                  {taxStatus.badgeLabel}
+                  {taxStatus.hasTax ? " (15%)" : ""}
+                </Badge>
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2 flex flex-col gap-1.5">
                   <Label className="text-xs text-foreground font-medium flex items-center justify-between">
                     <span>Drug / Brand Name</span>
                     <span className="text-[10px] text-teal-400 font-semibold uppercase">Required</span>
                   </Label>
-                  <Input placeholder="e.g. Amoxicillin 500mg" value={form.drugName}
+                  <Input placeholder="e.g. Amoxicillin 500mg or Vitamin C" value={form.drugName}
                     onChange={(e) => setForm((f) => ({ ...f, drugName: e.target.value }))} required />
                 </div>
                 <div className="flex flex-col gap-1.5">

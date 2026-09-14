@@ -17,6 +17,8 @@ import {
   updateCatalogItem,
 } from "./db";
 
+import { calculateTaxStatus } from "./tax";
+
 const IN_PERSON_ORDERS_KEY = "alem-pharmacy-in-person-orders";
 
 /** A prescription document uploaded by a customer through the portal */
@@ -118,21 +120,50 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [inPersonOrders, setInPersonOrders] = useState<InPersonOrder[]>([]);
 
   useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === IN_PERSON_ORDERS_KEY && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) setInPersonOrders(parsed);
+        } catch (err) {}
+      }
+    };
+
+    const handleCustomEvent = () => {
+      try {
+        const saved = window.localStorage.getItem(IN_PERSON_ORDERS_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) setInPersonOrders(parsed);
+        }
+      } catch (err) {}
+    };
+
+    window.addEventListener("storage", handleStorage);
+    window.addEventListener("in_person_orders_updated", handleCustomEvent);
+
     try {
       const saved = window.localStorage.getItem(IN_PERSON_ORDERS_KEY);
-      if (!saved) return;
-      const parsed = JSON.parse(saved) as InPersonOrder[];
-      if (Array.isArray(parsed)) {
-        setInPersonOrders(parsed);
+      if (saved) {
+        const parsed = JSON.parse(saved) as InPersonOrder[];
+        if (Array.isArray(parsed)) {
+          setInPersonOrders(parsed);
+        }
       }
     } catch (error) {
       console.warn("Failed to restore in-person orders:", error);
     }
+
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener("in_person_orders_updated", handleCustomEvent);
+    };
   }, []);
 
   useEffect(() => {
     try {
       window.localStorage.setItem(IN_PERSON_ORDERS_KEY, JSON.stringify(inPersonOrders));
+      window.dispatchEvent(new Event("in_person_orders_updated"));
     } catch (error) {
       console.warn("Failed to persist in-person orders:", error);
     }
@@ -948,12 +979,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [addLog]);
 
   // ── In-Person Orders (Pharmacist → Cashier) ──────────────────────────────
-  const createInPersonOrder = useCallback((patientName: string, items: InPersonOrderItem[]) => {
+  const createInPersonOrder = useCallback((patientName: string, items: (InPersonOrderItem & { category?: string })[]) => {
     if (items.length === 0 || !currentUser) return;
     const orderId = newId("ipo");
     const now = new Date().toISOString();
     const subtotal = items.reduce((acc, item) => acc + item.unitPrice * item.quantity, 0);
-    const tax = subtotal * 0.15; // 15% tax
+    const tax = items.reduce((acc, item) => {
+      const taxRes = calculateTaxStatus(item.category, item.drugName);
+      return acc + (item.unitPrice * item.quantity * taxRes.taxRate);
+    }, 0);
     const order: InPersonOrder = {
       id: orderId,
       patientName,
