@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { PrescriptionQueue } from "@/components/pharmacist/PrescriptionQueue";
 import { InPersonOrderDialog } from "@/components/pharmacist/InPersonOrderDialog";
@@ -73,17 +73,17 @@ function PharmacistContent() {
   const order = customerOrders.find((o) => o.id === selectedOrder);
 
   // Notify when a customer order is completed (cashier finished the receipt)
-  const prevCompletedRef = useState(completedOrders.map(o => o.id))[0];
+  const seenCompletedRef = useRef<Set<string>>(new Set(completedOrders.map((o) => o.id)));
   useEffect(() => {
-    const prevIds = new Set(prevCompletedRef);
-    const newlyCompleted = completedOrders.filter(o => !prevIds.has(o.id));
+    const newlyCompleted = completedOrders.filter((o) => !seenCompletedRef.current.has(o.id));
     if (newlyCompleted.length > 0) {
-      const newNotifs = newlyCompleted.map(o => ({
+      newlyCompleted.forEach((o) => seenCompletedRef.current.add(o.id));
+      const newNotifs = newlyCompleted.map((o) => ({
         id: o.id,
         message: `Order for ${o.patientName} has been completed and receipt printed`,
         timestamp: o.updatedAt,
       }));
-      setNotifications(prev => [...newNotifs, ...prev]);
+      setNotifications((prev) => [...newNotifs, ...prev]);
     }
   }, [completedOrders]);
 

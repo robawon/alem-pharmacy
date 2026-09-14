@@ -124,23 +124,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       if (e.key === IN_PERSON_ORDERS_KEY && e.newValue) {
         try {
           const parsed = JSON.parse(e.newValue);
-          if (Array.isArray(parsed)) setInPersonOrders(parsed);
+          if (Array.isArray(parsed)) {
+            setInPersonOrders((prev) => {
+              if (JSON.stringify(prev) === e.newValue) return prev;
+              return parsed;
+            });
+          }
         } catch (err) {}
       }
     };
 
-    const handleCustomEvent = () => {
-      try {
-        const saved = window.localStorage.getItem(IN_PERSON_ORDERS_KEY);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed)) setInPersonOrders(parsed);
-        }
-      } catch (err) {}
-    };
-
     window.addEventListener("storage", handleStorage);
-    window.addEventListener("in_person_orders_updated", handleCustomEvent);
 
     try {
       const saved = window.localStorage.getItem(IN_PERSON_ORDERS_KEY);
@@ -156,14 +150,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       window.removeEventListener("storage", handleStorage);
-      window.removeEventListener("in_person_orders_updated", handleCustomEvent);
     };
   }, []);
 
   useEffect(() => {
     try {
-      window.localStorage.setItem(IN_PERSON_ORDERS_KEY, JSON.stringify(inPersonOrders));
-      window.dispatchEvent(new Event("in_person_orders_updated"));
+      const currentStored = window.localStorage.getItem(IN_PERSON_ORDERS_KEY);
+      const newStr = JSON.stringify(inPersonOrders);
+      if (currentStored !== newStr) {
+        window.localStorage.setItem(IN_PERSON_ORDERS_KEY, newStr);
+      }
     } catch (error) {
       console.warn("Failed to persist in-person orders:", error);
     }
