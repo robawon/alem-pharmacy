@@ -118,6 +118,8 @@ export interface SaleRecord {
   timestamp: string;
   salespersonId?: string;
   pharmacistName?: string;
+  cashierId?: string;
+  cashierName?: string;
 }
 
 export interface ParkedCart {

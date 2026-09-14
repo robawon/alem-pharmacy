@@ -542,14 +542,18 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [addLog]);
 
   const completeSale = useCallback((sale: Omit<SaleRecord, "id" | "timestamp">) => {
-    const sId = sale.salespersonId || currentUser?.id;
-    const pName = sale.pharmacistName || staffProfiles.find(s => s.id === sId)?.name;
+    const cId = sale.cashierId || currentUser?.id;
+    const cName = sale.cashierName || staffProfiles.find(s => s.id === cId)?.name || currentUser?.name;
+    const sId = sale.salespersonId || (currentUser?.role === "pharmacist" ? currentUser?.id : undefined);
+    const pName = sale.pharmacistName || (sId ? staffProfiles.find(s => s.id === sId)?.name : undefined);
     const record: SaleRecord = {
       ...sale,
       id: newId("sale"),
       timestamp: new Date().toISOString(),
       salespersonId: sId,
       pharmacistName: pName,
+      cashierId: cId,
+      cashierName: cName,
     };
     setCompletedSales(prev => [...prev, record]);
     setCart([]);
@@ -1024,6 +1028,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     
     const creatorId = order.createdBy || currentUser?.id;
     const pharmacistProfile = staffProfiles.find(s => s.id === creatorId);
+    const cashierId = currentUser?.id;
+    const cashierProfile = staffProfiles.find(s => s.id === cashierId) || currentUser;
 
     // Create a receipt/sale record for the order
     const saleRecord: SaleRecord = {
@@ -1045,6 +1051,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       timestamp: now,
       salespersonId: creatorId,
       pharmacistName: pharmacistProfile?.name,
+      cashierId: cashierId,
+      cashierName: cashierProfile?.name,
     };
     setCompletedSales(prev => [...prev, saleRecord]);
     insertCompletedSale(saleRecord).catch(console.error);

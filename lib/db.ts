@@ -84,6 +84,14 @@ function toSaleRecord(r: any): SaleRecord {
     r.pharmacist_name ||
     undefined;
 
+  const cashierName =
+    r.cashier_staff?.full_name ||
+    r.cashier_staff?.name ||
+    r.cashier?.full_name ||
+    r.cashier?.name ||
+    r.cashier_name ||
+    undefined;
+
   return {
     id: r.id,
     items: r.items ?? [],
@@ -98,6 +106,8 @@ function toSaleRecord(r: any): SaleRecord {
     timestamp: r.timestamp,
     salespersonId: r.salesperson_id || r.pharmacist_id || r.user_id || undefined,
     pharmacistName,
+    cashierId: r.cashier_id || undefined,
+    cashierName,
   };
 }
 
@@ -134,10 +144,10 @@ export async function fetchCustomerOrders(): Promise<CustomerOrder[]> {
 }
 
 export async function fetchCompletedSales(): Promise<SaleRecord[]> {
-  // Join completed_sales with staff_profiles table using salesperson_id foreign key
+  // Join completed_sales with staff_profiles table using salesperson_id & cashier_id foreign keys
   const { data, error } = await supabase
     .from("completed_sales")
-    .select("*, pharmacist:staff_profiles!salesperson_id(id, name, email, role)")
+    .select("*, pharmacist:staff_profiles!salesperson_id(id, name, email, role), cashier_staff:staff_profiles!cashier_id(id, name, email, role)")
     .order("timestamp", { ascending: false });
 
   if (error) {
@@ -428,6 +438,7 @@ export async function insertCompletedSale(sale: SaleRecord) {
     amount_tendered: sale.amountTendered, change_due: sale.changeDue,
     timestamp: sale.timestamp,
     salesperson_id: sale.salespersonId ?? null,
+    cashier_id: sale.cashierId ?? null,
   });
   if (error) console.error("insertCompletedSale:", error.message);
 }

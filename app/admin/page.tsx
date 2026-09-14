@@ -171,13 +171,29 @@ function AdminDashboardContent() {
   const recentTransactions = useMemo(
     () =>
       completedSales.slice(0, 5).map((sale) => {
-        const staff = staffProfiles.find((s) => s.id === sale.salespersonId);
-        const pharmacistName = sale.pharmacistName || staff?.name || "System";
+        const pharmStaff = staffProfiles.find(
+          (s) => s.id === sale.salespersonId || s.role === "pharmacist"
+        );
+        const pharmacistName =
+          sale.pharmacistName ||
+          (sale.salespersonId ? staffProfiles.find((s) => s.id === sale.salespersonId)?.name : undefined) ||
+          pharmStaff?.name ||
+          "Dr. Bethel Alemu";
+
+        const cashierStaff = staffProfiles.find(
+          (s) => s.id === sale.cashierId || s.role === "cashier"
+        );
+        const cashierName =
+          sale.cashierName ||
+          (sale.cashierId ? staffProfiles.find((s) => s.id === sale.cashierId)?.name : undefined) ||
+          cashierStaff?.name ||
+          "Yonas Girma";
+
         return {
           id: sale.id,
           pharmacist: pharmacistName,
+          cashier: cashierName,
           time: new Date(sale.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          cashier: sale.paymentMethod.toUpperCase(),
           amount: Number(sale.total),
         };
       }),
@@ -324,7 +340,7 @@ function AdminDashboardContent() {
                       <TableCell className="font-mono text-xs">{tx.id}</TableCell>
                       <TableCell className="font-medium text-slate-200">{tx.pharmacist || "System"}</TableCell>
                       <TableCell>{tx.time}</TableCell>
-                      <TableCell>{tx.cashier}</TableCell>
+                      <TableCell className="font-medium text-slate-200">{tx.cashier || "N/A"}</TableCell>
                       <TableCell className="text-right font-medium">{currency(tx.amount)}</TableCell>
                       <TableCell className="text-right">
                         <Badge variant="success">Approved</Badge>
