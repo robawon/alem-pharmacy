@@ -542,11 +542,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [addLog]);
 
   const completeSale = useCallback((sale: Omit<SaleRecord, "id" | "timestamp">) => {
+    const sId = sale.salespersonId || currentUser?.id;
+    const pName = sale.pharmacistName || staffProfiles.find(s => s.id === sId)?.name;
     const record: SaleRecord = {
       ...sale,
       id: newId("sale"),
       timestamp: new Date().toISOString(),
-      salespersonId: currentUser?.id,
+      salespersonId: sId,
+      pharmacistName: pName,
     };
     setCompletedSales(prev => [...prev, record]);
     setCart([]);
@@ -1019,6 +1022,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     // Mark order as completed
     setInPersonOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: "completed", completedAt: now } : o));
     
+    const creatorId = order.createdBy || currentUser?.id;
+    const pharmacistProfile = staffProfiles.find(s => s.id === creatorId);
+
     // Create a receipt/sale record for the order
     const saleRecord: SaleRecord = {
       id: newId("sale"),
@@ -1037,7 +1043,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       amountTendered: order.total,
       changeDue: 0,
       timestamp: now,
-      salespersonId: currentUser?.id,
+      salespersonId: creatorId,
+      pharmacistName: pharmacistProfile?.name,
     };
     setCompletedSales(prev => [...prev, saleRecord]);
     insertCompletedSale(saleRecord).catch(console.error);

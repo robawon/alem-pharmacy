@@ -170,13 +170,18 @@ function AdminDashboardContent() {
 
   const recentTransactions = useMemo(
     () =>
-      completedSales.slice(0, 5).map((sale) => ({
-        id: sale.id,
-        time: new Date(sale.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        cashier: sale.paymentMethod.toUpperCase(),
-        amount: Number(sale.total),
-      })),
-    [completedSales],
+      completedSales.slice(0, 5).map((sale) => {
+        const staff = staffProfiles.find((s) => s.id === sale.salespersonId);
+        const pharmacistName = sale.pharmacistName || staff?.name || "System";
+        return {
+          id: sale.id,
+          pharmacist: pharmacistName,
+          time: new Date(sale.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          cashier: sale.paymentMethod.toUpperCase(),
+          amount: Number(sale.total),
+        };
+      }),
+    [completedSales, staffProfiles],
   );
 
   const handleRoleChange = (profileId: string, role: Role) => {
@@ -299,6 +304,7 @@ function AdminDashboardContent() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Transaction ID</TableHead>
+                  <TableHead>Pharmacist</TableHead>
                   <TableHead>Time</TableHead>
                   <TableHead>Cashier</TableHead>
                   <TableHead className="text-right">Total</TableHead>
@@ -308,7 +314,7 @@ function AdminDashboardContent() {
               <TableBody>
                 {recentTransactions.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="py-8 text-center text-sm text-muted">
+                    <TableCell colSpan={6} className="py-8 text-center text-sm text-muted">
                       No completed sales yet.
                     </TableCell>
                   </TableRow>
@@ -316,6 +322,7 @@ function AdminDashboardContent() {
                   recentTransactions.map((tx) => (
                     <TableRow key={tx.id}>
                       <TableCell className="font-mono text-xs">{tx.id}</TableCell>
+                      <TableCell className="font-medium text-slate-200">{tx.pharmacist || "System"}</TableCell>
                       <TableCell>{tx.time}</TableCell>
                       <TableCell>{tx.cashier}</TableCell>
                       <TableCell className="text-right font-medium">{currency(tx.amount)}</TableCell>

@@ -117,6 +117,7 @@ export interface SaleRecord {
   changeDue: number;
   timestamp: string;
   salespersonId?: string;
+  pharmacistName?: string;
 }
 
 export interface ParkedCart {

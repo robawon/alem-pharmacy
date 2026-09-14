@@ -76,12 +76,28 @@ function toCustomerOrder(r: any): CustomerOrder {
 }
 
 function toSaleRecord(r: any): SaleRecord {
+  const pharmacistName =
+    r.pharmacist?.full_name ||
+    r.pharmacist?.name ||
+    r.staff_profiles?.full_name ||
+    r.staff_profiles?.name ||
+    r.pharmacist_name ||
+    undefined;
+
   return {
-    id: r.id, items: r.items ?? [], subtotal: Number(r.subtotal),
-    discount: r.discount ?? null, discountAmount: Number(r.discount_amount),
-    tax: Number(r.tax), total: Number(r.total),
-    paymentMethod: r.payment_method, amountTendered: Number(r.amount_tendered),
-    changeDue: Number(r.change_due), timestamp: r.timestamp,
+    id: r.id,
+    items: r.items ?? [],
+    subtotal: Number(r.subtotal),
+    discount: r.discount ?? null,
+    discountAmount: Number(r.discount_amount),
+    tax: Number(r.tax),
+    total: Number(r.total),
+    paymentMethod: r.payment_method,
+    amountTendered: Number(r.amount_tendered),
+    changeDue: Number(r.change_due),
+    timestamp: r.timestamp,
+    salespersonId: r.salesperson_id || r.pharmacist_id || r.user_id || undefined,
+    pharmacistName,
   };
 }
 
@@ -118,8 +134,34 @@ export async function fetchCustomerOrders(): Promise<CustomerOrder[]> {
 }
 
 export async function fetchCompletedSales(): Promise<SaleRecord[]> {
-  const { data, error } = await supabase.from("completed_sales").select("*").order("timestamp", { ascending: false });
-  if (error) { console.error("fetchCompletedSales:", error.message); return []; }
+  // Join completed_sales with staff_profiles table using salesperson_id foreign key
+  const { data, error } = await supabase
+    .from("completed_sales")
+    .select("*, pharmacist:staff_profiles!salesperson_id(id, name, email, role)")
+    .order("timestamp", { ascending: false });
+
+  if (error) {
+    // Fallback: fetch without explicit FK join alias if relationship is implicit or unconstrained
+    const { data: fallbackData, error: fallbackErr } = await supabase
+      .from("completed_sales")
+      .select("*, staff_profiles(id, name)")
+      .order("timestamp", { ascending: false });
+
+    if (fallbackErr) {
+      const { data: simpleData, error: simpleErr } = await supabase
+        .from("completed_sales")
+        .select("*")
+        .order("timestamp", { ascending: false });
+
+      if (simpleErr) {
+        console.error("fetchCompletedSales:", simpleErr.message);
+        return [];
+      }
+      return (simpleData ?? []).map(toSaleRecord);
+    }
+    return (fallbackData ?? []).map(toSaleRecord);
+  }
+
   return (data ?? []).map(toSaleRecord);
 }
 
@@ -385,6 +427,7 @@ export async function insertCompletedSale(sale: SaleRecord) {
     tax: sale.tax, total: sale.total, payment_method: sale.paymentMethod,
     amount_tendered: sale.amountTendered, change_due: sale.changeDue,
     timestamp: sale.timestamp,
+    salesperson_id: sale.salespersonId ?? null,
   });
   if (error) console.error("insertCompletedSale:", error.message);
 }
