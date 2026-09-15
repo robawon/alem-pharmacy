@@ -244,7 +244,10 @@ export async function insertInventoryBatch(batch: StockBatch) {
     unit_price: batch.unitPrice, quantity: batch.quantity, quarantined: batch.quarantined,
     category: batch.category ?? null,
   });
-  if (error) console.error("insertInventoryBatch:", error.message);
+  if (error) {
+    console.error("insertInventoryBatch error:", error.message);
+    throw new Error(`Failed to insert inventory batch: ${error.message}`);
+  }
 }
 
 export async function updateCatalogItem(
@@ -262,12 +265,18 @@ export async function updateCatalogItem(
   if (patch.drugName !== undefined) dbPatch.drug_name = patch.drugName;
 
   const { error } = await supabase.from("catalog_items").update(dbPatch).eq("id", catalogId);
-  if (error) console.error("updateCatalogItem:", error.message);
+  if (error) {
+    console.error("updateCatalogItem error:", error.message);
+    throw new Error(`Failed to update catalog item: ${error.message}`);
+  }
 }
 
 export async function updateInventoryBatch(id: string, patch: Partial<{ quantity: number; quarantined: boolean }>) {
   const { error } = await supabase.from("inventory").update(patch).eq("id", id);
-  if (error) console.error("updateInventoryBatch:", error.message);
+  if (error) {
+    console.error("updateInventoryBatch error:", error.message);
+    throw new Error(`Failed to update inventory batch: ${error.message}`);
+  }
 }
 
 export async function restoreInventoryStock(batchId: string, amount: number) {
@@ -354,7 +363,10 @@ export async function deductCatalogStock(catalogId: string, amount: number) {
 
 export async function deleteInventoryBatch(id: string) {
   const { error } = await supabase.from("inventory").delete().eq("id", id);
-  if (error) console.error("deleteInventoryBatch:", error.message);
+  if (error) {
+    console.error("deleteInventoryBatch error:", error.message);
+    throw new Error(`Failed to delete inventory batch: ${error.message}`);
+  }
 }
 
 export async function insertStaffProfile(profile: StaffProfile) {
@@ -413,7 +425,10 @@ export async function updateMedicineRecord(
 
   if (Object.keys(invPatch).length > 0) {
     const { error: invErr } = await supabase.from("inventory").update(invPatch).eq("id", batchId);
-    if (invErr) console.error("updateMedicineRecord (inventory):", invErr.message);
+    if (invErr) {
+      console.error("updateMedicineRecord (inventory) error:", invErr.message);
+      throw new Error(`Failed to update inventory record: ${invErr.message}`);
+    }
   }
 
   const catPatch: Record<string, any> = {};
@@ -430,7 +445,10 @@ export async function updateMedicineRecord(
 
   if (Object.keys(catPatch).length > 0) {
     const { error: catErr } = await supabase.from("catalog_items").update(catPatch).eq("id", batchId);
-    if (catErr) console.error("updateMedicineRecord (catalog):", catErr.message);
+    if (catErr) {
+      console.error("updateMedicineRecord (catalog) error:", catErr.message);
+      // Not throwing if catalog item with exact batchId doesn't exist
+    }
   }
 }
 

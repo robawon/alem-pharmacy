@@ -466,15 +466,19 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [addLog]);
 
   // ── Inventory ───────────────────────────────────────────────────────────
-  const receiveShipment = useCallback((form: any) => {
+  const receiveShipment = useCallback(async (form: any) => {
     const newBatch: StockBatch = { ...form, id: newId("batch") };
-    setInventory(prev => [...prev, newBatch]);
-    insertInventoryBatch(newBatch).catch(console.error);
-    addLog("RECEIVE_SHIPMENT", `Received shipment of ${form.drugName} — ${form.quantity} units`);
+    const previousInventory = [...inventory];
+    const previousCatalog = [...catalog];
 
-    // Also sync to catalog so it appears on the customer portal
-    setCatalog(prev => {
-      const existing = prev.find(c => c.drugName.trim().toLowerCase() === (form.drugName || "").trim().toLowerCase());
+    setInventory(prev => [...prev, newBatch]);
+
+    try {
+      await insertInventoryBatch(newBatch);
+      addLog("RECEIVE_SHIPMENT", `Received shipment of ${form.drugName} — ${form.quantity} units`);
+
+      // Sync to catalog item
+      const existing = catalog.find(c => c.drugName.trim().toLowerCase() === (form.drugName || "").trim().toLowerCase());
       if (existing) {
         const newPrice = Number(form.unitPrice);
         const updatedCat = form.category || existing.category;
@@ -489,31 +493,36 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           inStock: newQty > 0,
         };
 
-        updateCatalogItem(existing.id, {
+        await updateCatalogItem(existing.id, {
           category: updatedCat,
           unitPrice: finalPrice,
           quantity: newQty,
           inStock: newQty > 0,
-        }).catch(console.error);
+        });
 
-        return prev.map(c => c.id === existing.id ? updated : c);
+        setCatalog(prev => prev.map(c => c.id === existing.id ? updated : c));
+      } else {
+        const newCatalogItem: CatalogItem = {
+          id: newId("cat"),
+          drugName: form.drugName,
+          genericName: form.genericName || form.drugName,
+          dosage: form.dosage || "",
+          category: form.category || "anti_biotic",
+          isRx: form.category ? form.category !== "cosmetics" : true,
+          unitPrice: Number(form.unitPrice) || 0,
+          quantity: Number(form.quantity) || 0,
+          inStock: Number(form.quantity) > 0,
+        };
+        await insertCatalogItem(newCatalogItem);
+        setCatalog(prev => [newCatalogItem, ...prev]);
       }
-      // Create a new catalog entry from the stock batch
-      const newCatalogItem: CatalogItem = {
-        id: newId("cat"),
-        drugName: form.drugName,
-        genericName: form.genericName || form.drugName,
-        dosage: form.dosage || "",
-        category: form.category || "anti_biotic",
-        isRx: form.category ? form.category !== "cosmetics" : true,
-        unitPrice: Number(form.unitPrice) || 0,
-        quantity: Number(form.quantity) || 0,
-        inStock: Number(form.quantity) > 0,
-      };
-      insertCatalogItem(newCatalogItem).catch(console.error);
-      return [newCatalogItem, ...prev];
-    });
-  }, [addLog]);
+    } catch (error: any) {
+      setInventory(previousInventory);
+      setCatalog(previousCatalog);
+      console.error("Failed to receive shipment:", error);
+      alert(`Could not add medicine: ${error.message || error}`);
+    }
+  }, [addLog, inventory, catalog]);
 
   const disposeStock = useCallback((batchId: string) => {
     setInventory(prev => prev.map(b => b.id === batchId ? { ...b, quantity: 0 } : b));
@@ -945,13 +954,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [addLog, currentUser, catalog, addToCustomerCart]
   );
 
-  const addCatalogItem = useCallback((item: Omit<CatalogItem, "id"> & { batchNumber?: string; expiryDate?: string; safetyThreshold?: number }) => {
-    const newItem: CatalogItem = { ...item, id: newId("cat") };
-    setCatalog(prev => [newItem, ...prev]);
-    insertCatalogItem(newItem).catch(console.error);
-    addLog("CATALOG_ITEM_ADDED", `Admin added new medicine: ${item.drugName} (${item.category})`);
+  const addCatalogItem = useCallback(async (item: Omit<CatalogItem, "id"> & { batchNumber?: string; expiryDate?: string; safetyThreshold?: number }) => {
+    const previousCatalog = [...catalog];
+    const previousInventory = [...inventory];
 
-    // Also create a stock batch so it appears in inventory (Stock & Batch Control table)
+    const newItem: CatalogItem = { ...item, id: newId("cat") };
     const formattedBatchNum = item.batchNumber || (item.drugName ? `${item.drugName.replace(/[^a-zA-Z0-9]/g, "").slice(0, 4).toUpperCase()}-${Date.now().toString().slice(-6)}` : `BATCH-${Date.now().toString().slice(-6)}`);
     const newBatch: StockBatch = {
       id: newId("batch"),
@@ -964,31 +971,49 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       quantity: Number(item.quantity) || 0,
       quarantined: false,
     };
-    setInventory(prev => [...prev, newBatch]);
-    insertInventoryBatch(newBatch).catch(console.error);
-  }, [addLog]);
 
-  const removeStock = useCallback((batchId: string) => {
-    // Capture batch info before removing from state
-    const batch = inventory.find(b => b.id === batchId);
-    // Remove from inventory
-    setInventory(prev => prev.filter(b => b.id !== batchId));
-    // Also remove the corresponding catalog item(s) by matching drug name
-    if (batch) {
-      setCatalog(prev => prev.filter(c =>
-        c.drugName.toLowerCase() !== batch.drugName.toLowerCase()
-      ));
+    setCatalog(prev => [newItem, ...prev]);
+    setInventory(prev => [...prev, newBatch]);
+
+    try {
+      await insertCatalogItem(newItem);
+      await insertInventoryBatch(newBatch);
+      addLog("CATALOG_ITEM_ADDED", `Admin added new medicine: ${item.drugName} (${item.category})`);
+    } catch (error: any) {
+      setCatalog(previousCatalog);
+      setInventory(previousInventory);
+      console.error("Failed to add medicine:", error);
+      alert(`Could not add medicine: ${error.message || error}`);
     }
-    // Delete from database so it does not reappear after refresh
-    deleteInventoryBatch(batchId).catch(console.error);
-    addLog("REMOVE_STOCK", `Permanently removed batch ${batchId} from stock`);
+  }, [addLog, catalog, inventory]);
+
+  const removeStock = useCallback(async (batchId: string) => {
+    const previousInventory = [...inventory];
+    const targetBatch = inventory.find(b => b.id === batchId);
+    if (!targetBatch) return;
+
+    // Optimistically update local UI state for fast feedback
+    setInventory(prev => prev.filter(b => b.id !== batchId));
+
+    try {
+      // Execute precise DB deletion by unique primary key ID
+      await deleteInventoryBatch(batchId);
+      addLog("REMOVE_STOCK", `Permanently removed inventory batch ${batchId} (${targetBatch.drugName})`);
+    } catch (error: any) {
+      // Safely roll back UI state if DB operation fails
+      setInventory(previousInventory);
+      console.error("Failed to remove stock batch:", error);
+      alert(`Could not delete medication batch: ${error.message || error}`);
+    }
   }, [addLog, inventory]);
 
-  const updateMedicine = useCallback((batchId: string, patch: any) => {
-    let targetDrugName = patch.oldDrugName;
+  const updateMedicine = useCallback(async (batchId: string, patch: any) => {
+    const previousInventory = [...inventory];
+    const previousCatalog = [...catalog];
+
+    // Optimistically update local inventory state by exact primary key batchId
     setInventory(prev => prev.map(b => {
       if (b.id === batchId) {
-        if (!targetDrugName) targetDrugName = b.drugName;
         return {
           ...b,
           drugName: patch.drugName !== undefined ? patch.drugName : b.drugName,
@@ -1003,9 +1028,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       return b;
     }));
 
+    // Update catalog item ONLY if its ID strictly matches batchId
     setCatalog(prev => prev.map(c => {
-      const matchName = targetDrugName || patch.drugName;
-      if (c.id === batchId || (matchName && c.drugName.toLowerCase() === matchName.toLowerCase())) {
+      if (c.id === batchId) {
         const newQty = patch.quantity !== undefined ? Number(patch.quantity) : c.quantity;
         return {
           ...c,
@@ -1022,9 +1047,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       return c;
     }));
 
-    updateMedicineRecord(batchId, patch).catch(console.error);
-    addLog("UPDATE_MEDICINE", `Updated medicine details for ${patch.drugName || batchId}`);
-  }, [addLog]);
+    try {
+      await updateMedicineRecord(batchId, patch);
+      addLog("UPDATE_MEDICINE", `Updated medicine details for ${patch.drugName || batchId}`);
+    } catch (error: any) {
+      // Roll back UI state on DB failure
+      setInventory(previousInventory);
+      setCatalog(previousCatalog);
+      console.error("Failed to update medicine record:", error);
+      alert(`Failed to update medicine: ${error.message || error}`);
+    }
+  }, [addLog, inventory, catalog]);
 
   // ── In-Person Orders (Pharmacist → Cashier) ──────────────────────────────
   const createInPersonOrder = useCallback((patientName: string, items: (InPersonOrderItem & { category?: string })[]) => {
