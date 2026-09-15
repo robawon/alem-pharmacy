@@ -239,13 +239,17 @@ export async function fetchStaffProfiles(): Promise<StaffProfile[]> {
 
 export async function insertInventoryBatch(batch: StockBatch) {
   const { error } = await supabase.from("inventory").insert({
-    id: batch.id, drug_name: batch.drugName, batch_number: batch.batchNumber,
-    expiry_date: batch.expiryDate, safety_threshold: batch.safetyThreshold,
-    unit_price: batch.unitPrice, quantity: batch.quantity, quarantined: batch.quarantined,
-    category: batch.category ?? null,
+    id: batch.id,
+    drug_name: batch.drugName,
+    batch_number: batch.batchNumber,
+    expiry_date: batch.expiryDate,
+    safety_threshold: batch.safetyThreshold,
+    unit_price: batch.unitPrice,
+    quantity: batch.quantity,
+    quarantined: batch.quarantined,
   });
+
   if (error) {
-    console.error("insertInventoryBatch error:", error.message);
     throw new Error(`Failed to insert inventory batch: ${error.message}`);
   }
 }
