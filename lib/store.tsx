@@ -655,6 +655,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       prev.map(batch => {
         const soldItem = sale.items.find(item => item.batchId === batch.id);
         if (soldItem) {
+          deductInventoryStock(batch.id, soldItem.quantity).catch(console.error);
           return { ...batch, quantity: Math.max(0, batch.quantity - soldItem.quantity) };
         }
         return batch;
@@ -667,6 +668,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           item.drugName.toLowerCase() === cat.drugName.toLowerCase()
         );
         if (soldItem) {
+          deductCatalogStock(cat.id, soldItem.quantity).catch(console.error);
           const newQty = Math.max(0, cat.quantity - soldItem.quantity);
           return { ...cat, quantity: newQty, inStock: newQty > 0 };
         }
@@ -717,6 +719,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       prev.map(batch => {
         const soldItem = cart.find(item => item.batchId === batch.id);
         if (soldItem) {
+          deductInventoryStock(batch.id, soldItem.quantity).catch(console.error);
           return { ...batch, quantity: Math.max(0, batch.quantity - soldItem.quantity) };
         }
         return batch;
@@ -728,6 +731,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           item.drugName.toLowerCase() === cat.drugName.toLowerCase()
         );
         if (soldItem) {
+          deductCatalogStock(cat.id, soldItem.quantity).catch(console.error);
           const newQty = Math.max(0, cat.quantity - soldItem.quantity);
           return { ...cat, quantity: newQty, inStock: newQty > 0 };
         }
@@ -1156,6 +1160,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           item.drugName.toLowerCase() === batch.drugName.toLowerCase()
         );
         if (soldItem) {
+          deductInventoryStock(batch.id, soldItem.quantity).catch(console.error);
           return { ...batch, quantity: Math.max(0, batch.quantity - soldItem.quantity) };
         }
         return batch;
@@ -1167,6 +1172,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           item.drugName.toLowerCase() === cat.drugName.toLowerCase()
         );
         if (soldItem) {
+          deductCatalogStock(cat.id, soldItem.quantity).catch(console.error);
           const newQty = Math.max(0, cat.quantity - soldItem.quantity);
           return { ...cat, quantity: newQty, inStock: newQty > 0 };
         }
