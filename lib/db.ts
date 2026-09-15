@@ -7,6 +7,7 @@ import { supabase } from "./supabase";
 import type {
   AuditLogEntry, CatalogItem, CustomerOrder, Prescription,
   SaleRecord, StaffProfile, StockBatch, CustomerContactInfo,
+  InPersonOrder, InPersonOrderStatus, InPersonOrderItem,
 } from "./types";
 
 // ── Mappers ─────────────────────────────────────────────────────────────────
@@ -195,6 +196,107 @@ export async function fetchCustomerOrders(): Promise<CustomerOrder[]> {
   const { data, error } = await supabase.from("customer_orders").select("*").order("created_at", { ascending: false });
   if (error) { console.error("fetchCustomerOrders:", error.message); return []; }
   return (data ?? []).map(toCustomerOrder);
+}
+
+export async function fetchInPersonOrders(): Promise<InPersonOrder[]> {
+  const { data, error } = await supabase
+    .from("customer_orders")
+    .select("*")
+    .eq("prescription_file_name", "IN_PERSON_ORDER")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("fetchInPersonOrders:", error.message);
+    return [];
+  }
+
+  return (data ?? []).map((r: any) => {
+    let parsedItems: InPersonOrderItem[] = [];
+    if (Array.isArray(r.items)) {
+      parsedItems = r.items.map((itemStr: string | object) => {
+        if (typeof itemStr === "object") return itemStr as InPersonOrderItem;
+        try {
+          return JSON.parse(itemStr as string);
+        } catch (e) {
+          return { id: `item_${Date.now()}`, drugName: String(itemStr), unitPrice: 0, quantity: 1 };
+        }
+      });
+    }
+    const notesData = r.prescription_notes
+      ? (() => { try { return JSON.parse(r.prescription_notes); } catch { return {}; } })()
+      : {};
+
+    return {
+      id: r.id,
+      patientName: r.patient_name,
+      items: parsedItems,
+      subtotal: notesData.subtotal || 0,
+      tax: notesData.tax || 0,
+      total: notesData.total || 0,
+      status: r.status as InPersonOrderStatus,
+      createdBy: notesData.createdBy || "",
+      createdAt: r.created_at,
+      receivedBy: notesData.receivedBy,
+      receivedAt: notesData.receivedAt,
+      completedAt: notesData.completedAt,
+    };
+  });
+}
+
+export async function insertInPersonOrder(order: InPersonOrder) {
+  const { error } = await supabase.from("customer_orders").insert({
+    id: order.id,
+    patient_name: order.patientName,
+    // Store each item as a JSON string in the items array so fetchInPersonOrders can parse it back
+    items: order.items.map((item) => JSON.stringify(item)),
+    is_rx: true,
+    status: order.status,
+    created_at: order.createdAt,
+    updated_at: order.createdAt,
+    pickup_ready: false,
+    prescription_file_name: "IN_PERSON_ORDER",
+    prescription_notes: JSON.stringify({
+      subtotal: order.subtotal,
+      tax: order.tax,
+      total: order.total,
+      createdBy: order.createdBy,
+    }),
+  });
+  if (error) console.error("insertInPersonOrder:", error.message);
+}
+
+export async function updateInPersonOrderStatus(
+  orderId: string,
+  status: string,
+  notesUpdate?: {
+    receivedBy?: string;
+    receivedAt?: string;
+    completedAt?: string;
+  }
+) {
+  // Fetch current prescription_notes so we can merge without overwriting existing fields
+  const { data: current } = await supabase
+    .from("customer_orders")
+    .select("prescription_notes")
+    .eq("id", orderId)
+    .single();
+
+  const existingNotes = current?.prescription_notes
+    ? (() => { try { return JSON.parse(current.prescription_notes); } catch { return {}; } })()
+    : {};
+
+  const mergedNotes = { ...existingNotes, ...(notesUpdate ?? {}) };
+
+  const { error } = await supabase
+    .from("customer_orders")
+    .update({
+      status,
+      updated_at: new Date().toISOString(),
+      prescription_notes: JSON.stringify(mergedNotes),
+    })
+    .eq("id", orderId);
+
+  if (error) console.error("updateInPersonOrderStatus:", error.message);
 }
 
 export async function fetchCompletedSales(): Promise<SaleRecord[]> {

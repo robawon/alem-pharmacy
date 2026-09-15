@@ -14,15 +14,13 @@ import {
   insertUploadedPrescription, fetchUploadedPrescriptions, updateUploadedPrescriptionStatus,
   insertStaffProfile, updateStaffRole, updateStaffStatus, deleteStaffProfile, updateMedicineRecord,
   updateStaffProfile, restoreInventoryStock, restoreCatalogStock, deductInventoryStock, deductCatalogStock,
-  updateCatalogItem,
+  updateCatalogItem, fetchInPersonOrders, insertInPersonOrder, updateInPersonOrderStatus,
 } from "./db";
 
 import { calculateTaxStatus } from "./tax";
 
-const IN_PERSON_ORDERS_KEY = "alem-pharmacy-in-person-orders";
-const COMPLETED_SALES_KEY = "alem-pharmacy-completed-sales";
-const INVENTORY_SYNC_KEY = "alem-pharmacy-inventory-sync";
-const CATALOG_SYNC_KEY = "alem-pharmacy-catalog-sync";
+// Note: in-person orders are now persisted via Supabase (customer_orders table).
+// localStorage is no longer used as a source of truth for multi-device data.
 
 /** A prescription document uploaded by a customer through the portal */
 export interface CustomerPrescriptionUpload {
@@ -122,88 +120,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [uploadedPrescriptions, setUploadedPrescriptions] = useState<CustomerPrescriptionUpload[]>([]);
   const [inPersonOrders, setInPersonOrders] = useState<InPersonOrder[]>([]);
 
-  useEffect(() => {
-    const handleStorage = (e: StorageEvent) => {
-      if (e.key === IN_PERSON_ORDERS_KEY && e.newValue) {
-        try {
-          const parsed = JSON.parse(e.newValue);
-          if (Array.isArray(parsed)) {
-            setInPersonOrders((prev) => {
-              if (JSON.stringify(prev) === e.newValue) return prev;
-              return parsed;
-            });
-          }
-        } catch (err) {}
-      }
-      if (e.key === COMPLETED_SALES_KEY && e.newValue) {
-        try {
-          const parsed = JSON.parse(e.newValue);
-          if (Array.isArray(parsed)) {
-            setCompletedSales((prev) => {
-              if (JSON.stringify(prev) === e.newValue) return prev;
-              return parsed;
-            });
-          }
-        } catch (err) {}
-      }
-      if (e.key === INVENTORY_SYNC_KEY && e.newValue) {
-        try {
-          const parsed = JSON.parse(e.newValue);
-          if (Array.isArray(parsed)) {
-            setInventory((prev) => {
-              if (JSON.stringify(prev) === e.newValue) return prev;
-              return parsed;
-            });
-          }
-        } catch (err) {}
-      }
-      if (e.key === CATALOG_SYNC_KEY && e.newValue) {
-        try {
-          const parsed = JSON.parse(e.newValue);
-          if (Array.isArray(parsed)) {
-            setCatalog((prev) => {
-              if (JSON.stringify(prev) === e.newValue) return prev;
-              return parsed;
-            });
-          }
-        } catch (err) {}
-      }
-    };
-
-    window.addEventListener("storage", handleStorage);
-
-    try {
-      const savedOrders = window.localStorage.getItem(IN_PERSON_ORDERS_KEY);
-      if (savedOrders) {
-        const parsed = JSON.parse(savedOrders) as InPersonOrder[];
-        if (Array.isArray(parsed)) setInPersonOrders(parsed);
-      }
-    } catch (error) {
-      console.warn("Failed to restore cached state:", error);
-    }
-
-    return () => {
-      window.removeEventListener("storage", handleStorage);
-    };
-  }, []);
-
-  useEffect(() => {
-    try {
-      const currentStored = window.localStorage.getItem(IN_PERSON_ORDERS_KEY);
-      const newStr = JSON.stringify(inPersonOrders);
-      if (currentStored !== newStr) {
-        window.localStorage.setItem(IN_PERSON_ORDERS_KEY, newStr);
-      }
-    } catch (error) {
-      console.warn("Failed to persist in-person orders:", error);
-    }
-  }, [inPersonOrders]);
+  // localStorage sync removed — Supabase Realtime is the single source of truth for all multi-device data.
 
   // ── Bootstrap from Supabase ──────────────────────────────────────────────
   useEffect(() => {
     async function loadFromDB() {
       try {
-        const [inv, rx, logs, cat, orders, sales, staff, uploadedRx] = await Promise.all([
+        const [inv, rx, logs, cat, orders, sales, staff, uploadedRx, ipoOrders] = await Promise.all([
           fetchInventory(),
           fetchPrescriptions(),
           fetchAuditLogs(),
@@ -212,6 +135,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           fetchCompletedSales(),
           fetchStaffProfiles(),
           fetchUploadedPrescriptions(),
+          fetchInPersonOrders(),
         ]);
         setInventory(inv);
         setPrescriptions(rx);
@@ -221,6 +145,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         setCompletedSales(sales);
         setStaffProfiles(staff);
         setUploadedPrescriptions(uploadedRx);
+        setInPersonOrders(ipoOrders);
       } catch (e) {
         console.warn("Supabase load failed:", e);
       } finally {
@@ -258,7 +183,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         fetchCatalog().then(setCatalog).catch(console.error);
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "customer_orders" }, () => {
+        // Refresh both regular customer orders AND in-person orders (which live in the same table)
         fetchCustomerOrders().then(setCustomerOrders).catch(console.error);
+        fetchInPersonOrders().then(setInPersonOrders).catch(console.error);
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "completed_sales" }, () => {
         fetchCompletedSales().then(setCompletedSales).catch(console.error);
@@ -1080,19 +1007,28 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       createdBy: currentUser.id,
       createdAt: now,
     };
+    // Optimistic local update — Supabase realtime will sync to all other devices
     setInPersonOrders(prev => [order, ...prev]);
+    // Persist to Supabase so cashier sees it on any device
+    insertInPersonOrder(order).catch(console.error);
     addLog("IN_PERSON_ORDER_CREATED", `Pharmacist created order ${orderId} for ${patientName} — ${items.length} items, ${currency(order.total)}`);
   }, [currentUser, addLog]);
 
   const receiveInPersonOrder = useCallback((orderId: string) => {
     if (!currentUser) return;
     const now = new Date().toISOString();
+    // Optimistic local update
     setInPersonOrders(prev => prev.map(o => o.id === orderId ? {
       ...o,
       status: "ready_for_checkout",
       receivedBy: currentUser.id,
       receivedAt: now,
     } : o));
+    // Persist to Supabase — all devices will sync via realtime
+    updateInPersonOrderStatus(orderId, "ready_for_checkout", {
+      receivedBy: currentUser.id,
+      receivedAt: now,
+    }).catch(console.error);
     addLog("IN_PERSON_ORDER_RECEIVED", `Cashier received order ${orderId}`);
   }, [currentUser, addLog]);
 
@@ -1100,16 +1036,19 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const now = new Date().toISOString();
     const order = inPersonOrders.find(o => o.id === orderId);
     if (!order) return;
-    
-    // Mark order as completed
+
+    // Prevent double-completion
+    if (order.status === "completed") return;
+
+    // Optimistic local update
     setInPersonOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: "completed", completedAt: now } : o));
-    
+
     const creatorId = order.createdBy || currentUser?.id;
     const pharmacistProfile = staffProfiles.find(s => s.id === creatorId);
     const cashierId = currentUser?.id;
     const cashierProfile = staffProfiles.find(s => s.id === cashierId) || currentUser;
 
-    // Create a receipt/sale record for the order
+    // Build exactly ONE sale record
     const saleRecord: SaleRecord = {
       id: newId("sale"),
       items: order.items.map(item => ({
@@ -1132,9 +1071,19 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       cashierId: cashierId,
       cashierName: cashierProfile?.name,
     };
-    setCompletedSales(prev => [...prev, saleRecord]);
+
+    // Optimistic sales state update
+    setCompletedSales(prev => {
+      // Guard against duplicate if realtime fires before optimistic update
+      if (prev.some(s => s.id === saleRecord.id)) return prev;
+      return [...prev, saleRecord];
+    });
+
+    // Persist: mark order completed in Supabase (triggers realtime on all devices)
+    updateInPersonOrderStatus(orderId, "completed", { completedAt: now }).catch(console.error);
+    // Persist: insert exactly one completed_sales record
     insertCompletedSale(saleRecord).catch(console.error);
-    
+
     // Deduct stock for the in-person order items
     setInventory(prev =>
       prev.map(batch => {
@@ -1163,10 +1112,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     );
 
     addLog("IN_PERSON_ORDER_COMPLETED", `Order ${orderId} completed and paid — Receipt ${saleRecord.id} created`);
-  }, [inPersonOrders, addLog, currentUser]);
+  }, [inPersonOrders, addLog, currentUser, staffProfiles]);
 
   const cancelInPersonOrder = useCallback((orderId: string) => {
+    // Optimistic local update
     setInPersonOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: "cancelled" } : o));
+    // Persist to Supabase — syncs to all devices via realtime
+    updateInPersonOrderStatus(orderId, "cancelled").catch(console.error);
     addLog("IN_PERSON_ORDER_CANCELLED", `Order ${orderId} was cancelled`);
   }, [addLog]);
 
