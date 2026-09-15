@@ -101,6 +101,22 @@ export default function AdminUserApprovalPage() {
 
   useEffect(() => {
     fetchPendingUsers();
+
+    const supabase = createClient();
+    const channel = supabase
+      .channel("admin-approvals-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "staff_profiles" },
+        () => {
+          fetchPendingUsers();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   return (

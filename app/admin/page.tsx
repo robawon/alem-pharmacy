@@ -123,6 +123,18 @@ function AdminDashboardContent() {
       }
     }
     loadPendingCount();
+
+    const supabase = createClient();
+    const channel = supabase
+      .channel("admin-kpi-approvals-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "staff_profiles" }, () => {
+        loadPendingCount();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const totalRevenue = completedSales.reduce((sum, entry) => sum + Number(entry.total), 0);

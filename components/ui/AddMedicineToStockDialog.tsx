@@ -64,7 +64,7 @@ export function AddMedicineToStockDialog({ open, onClose }: Props) {
       dosage: form.dosage,
       category,
       isRx: category !== "cosmetics",
-      batchNumber: form.batchNumber || `BATCH-${Date.now()}`,
+      batchNumber: form.batchNumber.trim() || `BATCH-${Date.now()}`,
       expiryDate: form.expiryDate,
       safetyThreshold: Number(form.safetyThreshold) || 10,
       unitPrice: Number(form.unitPrice),
@@ -78,11 +78,11 @@ export function AddMedicineToStockDialog({ open, onClose }: Props) {
       setForm(EMPTY);
       setCategory("anti_biotic");
       onClose();
-    }, 1800);
+    }, 1200);
   };
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) { setForm(EMPTY); setSubmitted(false); onClose(); } }}>
+    <Dialog open={open} onOpenChange={(v) => { if (!v) { setSubmitted(false); setForm(EMPTY); setCategory("anti_biotic"); onClose(); } }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-foreground">

@@ -71,11 +71,11 @@ export function AddMedicineDialog({ open, onClose }: Props) {
       setSubmitted(false);
       setForm(EMPTY);
       onClose();
-    }, 1800);
+    }, 1200);
   };
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) { setForm(EMPTY); setSubmitted(false); onClose(); } }}>
+    <Dialog open={open} onOpenChange={(v) => { if (!v) { setSubmitted(false); setForm(EMPTY); onClose(); } }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-foreground">

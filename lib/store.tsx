@@ -305,7 +305,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       }
     }).catch((e) => console.warn("Failed to restore session:", e));
 
-    // Live Real-Time Subscriptions
+    // Live Real-Time Subscriptions across all tables and roles
     const channel = supabase
       .channel("realtime-pms-sync")
       .on("postgres_changes", { event: "*", schema: "public", table: "inventory" }, () => {
@@ -322,6 +322,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "uploaded_prescriptions" }, () => {
         fetchUploadedPrescriptions().then(setUploadedPrescriptions).catch(console.error);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "staff_profiles" }, () => {
+        fetchStaffProfiles().then(setStaffProfiles).catch(console.error);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "prescriptions" }, () => {
+        fetchPrescriptions().then(setPrescriptions).catch(console.error);
       })
       .subscribe();
 

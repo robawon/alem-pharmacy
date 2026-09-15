@@ -114,9 +114,36 @@ function toSaleRecord(r: any): SaleRecord {
 // ── Fetch functions ─────────────────────────────────────────────────────────
 
 export async function fetchInventory(): Promise<StockBatch[]> {
-  const { data, error } = await supabase.from("inventory").select("*").order("created_at", { ascending: true });
-  if (error) { console.error("fetchInventory:", error.message); return []; }
-  return (data ?? []).map(toStockBatch);
+  const allRows: any[] = [];
+  let page = 0;
+  const pageSize = 1000;
+  let hasMore = true;
+
+  while (hasMore) {
+    const { data, error } = await supabase
+      .from("inventory")
+      .select("*")
+      .order("created_at", { ascending: true })
+      .range(page * pageSize, (page + 1) * pageSize - 1);
+
+    if (error) {
+      console.error("fetchInventory:", error.message);
+      break;
+    }
+
+    if (data && data.length > 0) {
+      allRows.push(...data);
+      if (data.length < pageSize) {
+        hasMore = false;
+      } else {
+        page++;
+      }
+    } else {
+      hasMore = false;
+    }
+  }
+
+  return allRows.map(toStockBatch);
 }
 
 export async function fetchPrescriptions(): Promise<Prescription[]> {
@@ -132,9 +159,36 @@ export async function fetchAuditLogs(): Promise<AuditLogEntry[]> {
 }
 
 export async function fetchCatalog(): Promise<CatalogItem[]> {
-  const { data, error } = await supabase.from("catalog_items").select("*").order("drug_name");
-  if (error) { console.error("fetchCatalog:", error.message); return []; }
-  return (data ?? []).map(toCatalogItem);
+  const allRows: any[] = [];
+  let page = 0;
+  const pageSize = 1000;
+  let hasMore = true;
+
+  while (hasMore) {
+    const { data, error } = await supabase
+      .from("catalog_items")
+      .select("*")
+      .order("drug_name")
+      .range(page * pageSize, (page + 1) * pageSize - 1);
+
+    if (error) {
+      console.error("fetchCatalog:", error.message);
+      break;
+    }
+
+    if (data && data.length > 0) {
+      allRows.push(...data);
+      if (data.length < pageSize) {
+        hasMore = false;
+      } else {
+        page++;
+      }
+    } else {
+      hasMore = false;
+    }
+  }
+
+  return allRows.map(toCatalogItem);
 }
 
 export async function fetchCustomerOrders(): Promise<CustomerOrder[]> {
