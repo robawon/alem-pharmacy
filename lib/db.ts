@@ -7,7 +7,7 @@ import { supabase } from "./supabase";
 import type {
   AuditLogEntry, CatalogItem, CustomerOrder, Prescription,
   SaleRecord, StaffProfile, StockBatch, CustomerContactInfo,
-  InPersonOrder, InPersonOrderStatus, InPersonOrderItem,
+  InPersonOrder, InPersonOrderStatus,
 } from "./types";
 
 // ── Mappers ─────────────────────────────────────────────────────────────────
@@ -198,105 +198,103 @@ export async function fetchCustomerOrders(): Promise<CustomerOrder[]> {
   return (data ?? []).map(toCustomerOrder);
 }
 
-export async function fetchInPersonOrders(): Promise<InPersonOrder[]> {
+// ── Pharmacy Orders (Pharmacist → Cashier in-person orders) ──────────────────
+// Uses the dedicated pharmacy_orders table with its own status check constraint.
+// The old customer_orders + prescription_file_name="IN_PERSON_ORDER" hack has been
+// removed because its CHECK CONSTRAINT rejected 'pending_cashier' and
+// 'ready_for_checkout', silently dropping every INSERT.
+
+function toInPersonOrder(r: any): InPersonOrder {
+  return {
+    id: r.id,
+    patientName: r.patient_name,
+    // items is stored as JSONB, so Supabase returns it already parsed
+    items: Array.isArray(r.items) ? r.items : [],
+    subtotal: Number(r.subtotal),
+    tax: Number(r.tax),
+    total: Number(r.total),
+    status: r.status as InPersonOrderStatus,
+    createdBy: r.created_by ?? "",
+    createdAt: r.created_at,
+    receivedBy: r.received_by ?? undefined,
+    receivedAt: r.received_at ?? undefined,
+    completedAt: r.completed_at ?? undefined,
+  };
+}
+
+export async function fetchPharmacyOrders(): Promise<InPersonOrder[]> {
   const { data, error } = await supabase
-    .from("customer_orders")
+    .from("pharmacy_orders")
     .select("*")
-    .eq("prescription_file_name", "IN_PERSON_ORDER")
     .order("created_at", { ascending: false });
 
   if (error) {
-    console.error("fetchInPersonOrders:", error.message);
+    console.error("fetchPharmacyOrders:", error.message);
     return [];
   }
 
-  return (data ?? []).map((r: any) => {
-    let parsedItems: InPersonOrderItem[] = [];
-    if (Array.isArray(r.items)) {
-      parsedItems = r.items.map((itemStr: string | object) => {
-        if (typeof itemStr === "object") return itemStr as InPersonOrderItem;
-        try {
-          return JSON.parse(itemStr as string);
-        } catch (e) {
-          return { id: `item_${Date.now()}`, drugName: String(itemStr), unitPrice: 0, quantity: 1 };
-        }
-      });
-    }
-    const notesData = r.prescription_notes
-      ? (() => { try { return JSON.parse(r.prescription_notes); } catch { return {}; } })()
-      : {};
-
-    return {
-      id: r.id,
-      patientName: r.patient_name,
-      items: parsedItems,
-      subtotal: notesData.subtotal || 0,
-      tax: notesData.tax || 0,
-      total: notesData.total || 0,
-      status: r.status as InPersonOrderStatus,
-      createdBy: notesData.createdBy || "",
-      createdAt: r.created_at,
-      receivedBy: notesData.receivedBy,
-      receivedAt: notesData.receivedAt,
-      completedAt: notesData.completedAt,
-    };
-  });
+  return (data ?? []).map(toInPersonOrder);
 }
 
-export async function insertInPersonOrder(order: InPersonOrder) {
-  const { error } = await supabase.from("customer_orders").insert({
+export async function insertPharmacyOrder(order: InPersonOrder): Promise<{ error: string | null }> {
+  const { error } = await supabase.from("pharmacy_orders").insert({
     id: order.id,
     patient_name: order.patientName,
-    // Store each item as a JSON string in the items array so fetchInPersonOrders can parse it back
-    items: order.items.map((item) => JSON.stringify(item)),
-    is_rx: true,
-    status: order.status,
+    items: order.items,          // JSONB — no serialisation needed
+    subtotal: order.subtotal,
+    tax: order.tax,
+    total: order.total,
+    status: order.status,        // 'pending_cashier' — valid in pharmacy_orders
+    created_by: order.createdBy,
     created_at: order.createdAt,
-    updated_at: order.createdAt,
-    pickup_ready: false,
-    prescription_file_name: "IN_PERSON_ORDER",
-    prescription_notes: JSON.stringify({
-      subtotal: order.subtotal,
-      tax: order.tax,
-      total: order.total,
-      createdBy: order.createdBy,
-    }),
   });
-  if (error) console.error("insertInPersonOrder:", error.message);
+  if (error) {
+    console.error("insertPharmacyOrder:", error.message);
+    return { error: error.message };
+  }
+  return { error: null };
 }
 
-export async function updateInPersonOrderStatus(
+export async function updatePharmacyOrderStatus(
   orderId: string,
   status: string,
-  notesUpdate?: {
+  extra?: {
     receivedBy?: string;
     receivedAt?: string;
     completedAt?: string;
+    saleId?: string;
   }
-) {
-  // Fetch current prescription_notes so we can merge without overwriting existing fields
-  const { data: current } = await supabase
-    .from("customer_orders")
-    .select("prescription_notes")
-    .eq("id", orderId)
-    .single();
-
-  const existingNotes = current?.prescription_notes
-    ? (() => { try { return JSON.parse(current.prescription_notes); } catch { return {}; } })()
-    : {};
-
-  const mergedNotes = { ...existingNotes, ...(notesUpdate ?? {}) };
+): Promise<{ error: string | null }> {
+  const patch: Record<string, any> = { status };
+  if (extra?.receivedBy !== undefined) patch.received_by = extra.receivedBy;
+  if (extra?.receivedAt !== undefined) patch.received_at = extra.receivedAt;
+  if (extra?.completedAt !== undefined) patch.completed_at = extra.completedAt;
+  if (extra?.saleId !== undefined) patch.sale_id = extra.saleId;
 
   const { error } = await supabase
-    .from("customer_orders")
-    .update({
-      status,
-      updated_at: new Date().toISOString(),
-      prescription_notes: JSON.stringify(mergedNotes),
-    })
+    .from("pharmacy_orders")
+    .update(patch)
     .eq("id", orderId);
 
-  if (error) console.error("updateInPersonOrderStatus:", error.message);
+  if (error) {
+    console.error("updatePharmacyOrderStatus:", error.message);
+    return { error: error.message };
+  }
+  return { error: null };
+}
+
+/** Read the sale_id field of a pharmacy order — used to detect duplicate completion. */
+export async function getPharmacyOrderSaleId(orderId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("pharmacy_orders")
+    .select("sale_id")
+    .eq("id", orderId)
+    .maybeSingle();
+  if (error) {
+    console.error("getPharmacyOrderSaleId:", error.message);
+    return null;
+  }
+  return data?.sale_id ?? null;
 }
 
 export async function fetchCompletedSales(): Promise<SaleRecord[]> {

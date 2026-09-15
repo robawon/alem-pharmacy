@@ -14,13 +14,14 @@ import {
   insertUploadedPrescription, fetchUploadedPrescriptions, updateUploadedPrescriptionStatus,
   insertStaffProfile, updateStaffRole, updateStaffStatus, deleteStaffProfile, updateMedicineRecord,
   updateStaffProfile, restoreInventoryStock, restoreCatalogStock, deductInventoryStock, deductCatalogStock,
-  updateCatalogItem, fetchInPersonOrders, insertInPersonOrder, updateInPersonOrderStatus,
+  updateCatalogItem, fetchPharmacyOrders, insertPharmacyOrder, updatePharmacyOrderStatus, getPharmacyOrderSaleId,
 } from "./db";
 
 import { calculateTaxStatus } from "./tax";
 
-// Note: in-person orders are now persisted via Supabase (customer_orders table).
-// localStorage is no longer used as a source of truth for multi-device data.
+// Note: in-person orders are persisted via the dedicated `pharmacy_orders` Supabase table.
+// localStorage is NOT used for cross-device communication.
+// Supabase Realtime (pharmacy_orders table) is the single source of truth.
 
 /** A prescription document uploaded by a customer through the portal */
 export interface CustomerPrescriptionUpload {
@@ -126,7 +127,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     async function loadFromDB() {
       try {
-        const [inv, rx, logs, cat, orders, sales, staff, uploadedRx, ipoOrders] = await Promise.all([
+        const [inv, rx, logs, cat, orders, sales, staff, uploadedRx, pharmacyOrders] = await Promise.all([
           fetchInventory(),
           fetchPrescriptions(),
           fetchAuditLogs(),
@@ -135,7 +136,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           fetchCompletedSales(),
           fetchStaffProfiles(),
           fetchUploadedPrescriptions(),
-          fetchInPersonOrders(),
+          fetchPharmacyOrders(),
         ]);
         setInventory(inv);
         setPrescriptions(rx);
@@ -145,7 +146,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         setCompletedSales(sales);
         setStaffProfiles(staff);
         setUploadedPrescriptions(uploadedRx);
-        setInPersonOrders(ipoOrders);
+        setInPersonOrders(pharmacyOrders);
       } catch (e) {
         console.warn("Supabase load failed:", e);
       } finally {
@@ -183,9 +184,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         fetchCatalog().then(setCatalog).catch(console.error);
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "customer_orders" }, () => {
-        // Refresh both regular customer orders AND in-person orders (which live in the same table)
+        // Only refresh regular customer orders — in-person orders now live in pharmacy_orders
         fetchCustomerOrders().then(setCustomerOrders).catch(console.error);
-        fetchInPersonOrders().then(setInPersonOrders).catch(console.error);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "pharmacy_orders" }, () => {
+        // Pharmacist creates order → INSERT fires here → cashier sees it immediately
+        // Cashier receives/completes order → UPDATE fires here → pharmacist sees update
+        fetchPharmacyOrders().then(setInPersonOrders).catch(console.error);
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "completed_sales" }, () => {
         fetchCompletedSales().then(setCompletedSales).catch(console.error);
@@ -987,7 +992,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [addLog, inventory, catalog]);
 
   // ── In-Person Orders (Pharmacist → Cashier) ──────────────────────────────
-  const createInPersonOrder = useCallback((patientName: string, items: (InPersonOrderItem & { category?: string })[]) => {
+  const createInPersonOrder = useCallback(async (patientName: string, items: (InPersonOrderItem & { category?: string })[]) => {
     if (items.length === 0 || !currentUser) return;
     const orderId = newId("ipo");
     const now = new Date().toISOString();
@@ -1009,8 +1014,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     };
     // Optimistic local update — Supabase realtime will sync to all other devices
     setInPersonOrders(prev => [order, ...prev]);
-    // Persist to Supabase so cashier sees it on any device
-    insertInPersonOrder(order).catch(console.error);
+    // Persist to Supabase pharmacy_orders so cashier sees it on any device
+    const { error } = await insertPharmacyOrder(order);
+    if (error) {
+      // Roll back optimistic update so pharmacist knows it failed
+      setInPersonOrders(prev => prev.filter(o => o.id !== orderId));
+      console.error("createInPersonOrder: Supabase insert failed:", error);
+      alert(`Failed to send order to cashier: ${error}`);
+      return;
+    }
     addLog("IN_PERSON_ORDER_CREATED", `Pharmacist created order ${orderId} for ${patientName} — ${items.length} items, ${currency(order.total)}`);
   }, [currentUser, addLog]);
 
@@ -1024,21 +1036,30 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       receivedBy: currentUser.id,
       receivedAt: now,
     } : o));
-    // Persist to Supabase — all devices will sync via realtime
-    updateInPersonOrderStatus(orderId, "ready_for_checkout", {
+    // Persist to Supabase pharmacy_orders — all devices will sync via realtime
+    updatePharmacyOrderStatus(orderId, "ready_for_checkout", {
       receivedBy: currentUser.id,
       receivedAt: now,
     }).catch(console.error);
     addLog("IN_PERSON_ORDER_RECEIVED", `Cashier received order ${orderId}`);
   }, [currentUser, addLog]);
 
-  const completeInPersonOrder = useCallback((orderId: string) => {
+
+  const completeInPersonOrder = useCallback(async (orderId: string) => {
     const now = new Date().toISOString();
     const order = inPersonOrders.find(o => o.id === orderId);
     if (!order) return;
 
-    // Prevent double-completion
+    // Prevent double-completion (local state guard)
     if (order.status === "completed") return;
+
+    // DB-level duplicate guard: check if sale_id already set (handles realtime race)
+    const existingSaleId = await getPharmacyOrderSaleId(orderId);
+    if (existingSaleId) {
+      // Order was already completed by another session — just sync local state
+      setInPersonOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: "completed", completedAt: now } : o));
+      return;
+    }
 
     // Optimistic local update
     setInPersonOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: "completed", completedAt: now } : o));
@@ -1079,8 +1100,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       return [...prev, saleRecord];
     });
 
-    // Persist: mark order completed in Supabase (triggers realtime on all devices)
-    updateInPersonOrderStatus(orderId, "completed", { completedAt: now }).catch(console.error);
+    // Persist: mark order completed and stamp sale_id atomically to prevent duplicates
+    updatePharmacyOrderStatus(orderId, "completed", {
+      completedAt: now,
+      saleId: saleRecord.id,
+    }).catch(console.error);
     // Persist: insert exactly one completed_sales record
     insertCompletedSale(saleRecord).catch(console.error);
 
@@ -1117,10 +1141,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const cancelInPersonOrder = useCallback((orderId: string) => {
     // Optimistic local update
     setInPersonOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: "cancelled" } : o));
-    // Persist to Supabase — syncs to all devices via realtime
-    updateInPersonOrderStatus(orderId, "cancelled").catch(console.error);
+    // Persist to Supabase pharmacy_orders — syncs to all devices via realtime
+    updatePharmacyOrderStatus(orderId, "cancelled").catch(console.error);
     addLog("IN_PERSON_ORDER_CANCELLED", `Order ${orderId} was cancelled`);
   }, [addLog]);
+
 
   const approveUploadedPrescription = useCallback(
     (uploadId: string, selectedCatalogId?: string) => {
@@ -1172,7 +1197,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   // ── Dashboard Refresh ────────────────────────────────────────────────────
   const refreshDashboardData = useCallback(async () => {
     try {
-      const [inv, rx, logs, cat, orders, sales, staff, uploadedRx] = await Promise.all([
+      const [inv, rx, logs, cat, orders, sales, staff, uploadedRx, pharmacyOrders] = await Promise.all([
         fetchInventory(),
         fetchPrescriptions(),
         fetchAuditLogs(),
@@ -1181,6 +1206,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         fetchCompletedSales(),
         fetchStaffProfiles(),
         fetchUploadedPrescriptions(),
+        fetchPharmacyOrders(),
       ]);
       setInventory(inv);
       setPrescriptions(rx);
@@ -1190,9 +1216,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setCompletedSales(sales);
       setStaffProfiles(staff);
       setUploadedPrescriptions(uploadedRx);
+      setInPersonOrders(pharmacyOrders);
     } catch (e) {
       console.warn("Dashboard refresh failed:", e);
     }
+
   }, []);
 
   const value = useMemo(() => ({
