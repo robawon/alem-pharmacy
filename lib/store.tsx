@@ -20,6 +20,7 @@ import {
 import { calculateTaxStatus } from "./tax";
 
 const IN_PERSON_ORDERS_KEY = "alem-pharmacy-in-person-orders";
+const COMPLETED_SALES_KEY = "alem-pharmacy-completed-sales";
 
 /** A prescription document uploaded by a customer through the portal */
 export interface CustomerPrescriptionUpload {
@@ -132,20 +133,34 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           }
         } catch (err) {}
       }
+      if (e.key === COMPLETED_SALES_KEY && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) {
+            setCompletedSales((prev) => {
+              if (JSON.stringify(prev) === e.newValue) return prev;
+              return parsed;
+            });
+          }
+        } catch (err) {}
+      }
     };
 
     window.addEventListener("storage", handleStorage);
 
     try {
-      const saved = window.localStorage.getItem(IN_PERSON_ORDERS_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved) as InPersonOrder[];
-        if (Array.isArray(parsed)) {
-          setInPersonOrders(parsed);
-        }
+      const savedOrders = window.localStorage.getItem(IN_PERSON_ORDERS_KEY);
+      if (savedOrders) {
+        const parsed = JSON.parse(savedOrders) as InPersonOrder[];
+        if (Array.isArray(parsed)) setInPersonOrders(parsed);
+      }
+      const savedSales = window.localStorage.getItem(COMPLETED_SALES_KEY);
+      if (savedSales) {
+        const parsed = JSON.parse(savedSales) as SaleRecord[];
+        if (Array.isArray(parsed) && parsed.length > 0) setCompletedSales(parsed);
       }
     } catch (error) {
-      console.warn("Failed to restore in-person orders:", error);
+      console.warn("Failed to restore cached state:", error);
     }
 
     return () => {
@@ -164,6 +179,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       console.warn("Failed to persist in-person orders:", error);
     }
   }, [inPersonOrders]);
+
+  useEffect(() => {
+    try {
+      if (completedSales.length > 0) {
+        const currentStored = window.localStorage.getItem(COMPLETED_SALES_KEY);
+        const newStr = JSON.stringify(completedSales);
+        if (currentStored !== newStr) {
+          window.localStorage.setItem(COMPLETED_SALES_KEY, newStr);
+        }
+      }
+    } catch (error) {
+      console.warn("Failed to persist completed sales:", error);
+    }
+  }, [completedSales]);
 
   // ── Bootstrap from Supabase ──────────────────────────────────────────────
   useEffect(() => {
