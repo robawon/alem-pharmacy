@@ -218,13 +218,12 @@ export function PrescriptionQueue() {
                     variant="success"
                     className="gap-2"
                     disabled={Boolean(selectedBatch?.quarantined) || selectedBatch?.quantity === 0}
-                    onClick={() => {
-                      verifyPrescription(selectedRx.id);
+                    onClick={async () => {
                       if (selectedBatch) {
-                        createInPersonOrder(
+                        const created = await createInPersonOrder(
                           selectedRx.patientName,
                           [{
-                            id: `item_${Date.now()}`,
+                            id: selectedBatch.id,
                             drugName: selectedRx.drugName,
                             dosage: selectedRx.dosage,
                             genericName: selectedRx.drugName,
@@ -232,6 +231,7 @@ export function PrescriptionQueue() {
                             quantity: 1,
                           }]
                         );
+                        if (created) verifyPrescription(selectedRx.id);
                       }
                     }}
                   >

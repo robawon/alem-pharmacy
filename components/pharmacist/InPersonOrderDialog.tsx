@@ -73,7 +73,7 @@ export function InPersonOrderDialog({ open, onOpenChange }: InPersonOrderDialogP
     }
 
     const newItem = {
-      id: `item_${Date.now()}`,
+      id: selectedMedicine.id,
       drugName: selectedMedicine.drugName,
       dosage: selectedMedicine.batchNumber ? `Batch: ${selectedMedicine.batchNumber}` : "",
       genericName: selectedMedicine.drugName,
@@ -100,13 +100,14 @@ export function InPersonOrderDialog({ open, onOpenChange }: InPersonOrderDialogP
     setSelectedItems(prev => prev.filter(i => i.id !== itemId));
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (selectedItems.length === 0) {
       alert("Please add at least one medicine");
       return;
     }
 
-    createInPersonOrder(patientName.trim() || "Walk-in Patient", selectedItems);
+    const created = await createInPersonOrder(patientName.trim() || "Walk-in Patient", selectedItems);
+    if (!created) return;
     setPatientName("");
     setSelectedItems([]);
     setSelectedMedicineId("");

@@ -219,6 +219,7 @@ function toInPersonOrder(r: any): InPersonOrder {
     receivedBy: r.received_by ?? undefined,
     receivedAt: r.received_at ?? undefined,
     completedAt: r.completed_at ?? undefined,
+    saleId: r.sale_id ?? undefined,
   };
 }
 
@@ -237,11 +238,6 @@ export async function fetchPharmacyOrders(): Promise<InPersonOrder[]> {
 }
 
 export async function insertPharmacyOrder(order: InPersonOrder): Promise<{ error: string | null }> {
-  // ── TEMPORARY AUTH DEBUG ──────────────────────────────────────────────────
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  console.log("AUTH USER:", user?.id);
-  console.log("AUTH ERROR:", authError);
-  // ─────────────────────────────────────────────────────────────────────────
   const { error } = await supabase.from("pharmacy_orders").insert({
     id: order.id,
     patient_name: order.patientName,
@@ -260,46 +256,46 @@ export async function insertPharmacyOrder(order: InPersonOrder): Promise<{ error
   return { error: null };
 }
 
-export async function updatePharmacyOrderStatus(
+export async function updatePharmacyOrder(
   orderId: string,
-  status: string,
-  extra?: {
-    receivedBy?: string;
-    receivedAt?: string;
-    completedAt?: string;
-    saleId?: string;
-  }
+  patch: Partial<{
+    status: InPersonOrderStatus;
+    receivedBy: string | null;
+    receivedAt: string | null;
+    completedAt: string | null;
+    saleId: string | null;
+  }>
 ): Promise<{ error: string | null }> {
-  const patch: Record<string, any> = { status };
-  if (extra?.receivedBy !== undefined) patch.received_by = extra.receivedBy;
-  if (extra?.receivedAt !== undefined) patch.received_at = extra.receivedAt;
-  if (extra?.completedAt !== undefined) patch.completed_at = extra.completedAt;
-  if (extra?.saleId !== undefined) patch.sale_id = extra.saleId;
+  const dbPatch: Record<string, any> = {};
+  if (patch.status !== undefined) dbPatch.status = patch.status;
+  if (patch.receivedBy !== undefined) dbPatch.received_by = patch.receivedBy;
+  if (patch.receivedAt !== undefined) dbPatch.received_at = patch.receivedAt;
+  if (patch.completedAt !== undefined) dbPatch.completed_at = patch.completedAt;
+  if (patch.saleId !== undefined) dbPatch.sale_id = patch.saleId;
 
-  const { error } = await supabase
-    .from("pharmacy_orders")
-    .update(patch)
-    .eq("id", orderId);
-
+  const { error } = await supabase.from("pharmacy_orders").update(dbPatch).eq("id", orderId);
   if (error) {
-    console.error("updatePharmacyOrderStatus:", error.message);
+    console.error("updatePharmacyOrder:", error.message);
     return { error: error.message };
   }
   return { error: null };
 }
 
-/** Read the sale_id field of a pharmacy order — used to detect duplicate completion. */
-export async function getPharmacyOrderSaleId(orderId: string): Promise<string | null> {
+export async function claimPharmacyOrder(orderId: string, saleId: string): Promise<{ claimed: boolean; error: string | null }> {
   const { data, error } = await supabase
     .from("pharmacy_orders")
-    .select("sale_id")
+    .update({ sale_id: saleId })
     .eq("id", orderId)
+    .eq("status", "ready_for_checkout")
+    .is("sale_id", null)
+    .select("id")
     .maybeSingle();
+
   if (error) {
-    console.error("getPharmacyOrderSaleId:", error.message);
-    return null;
+    console.error("claimPharmacyOrder:", error.message);
+    return { claimed: false, error: error.message };
   }
-  return data?.sale_id ?? null;
+  return { claimed: Boolean(data), error: null };
 }
 
 export async function fetchCompletedSales(): Promise<SaleRecord[]> {
@@ -611,7 +607,7 @@ export async function updateCustomerOrderStatus(id: string, status: string) {
   if (error) console.error("updateCustomerOrderStatus:", error.message);
 }
 
-export async function insertCompletedSale(sale: SaleRecord) {
+export async function insertCompletedSale(sale: SaleRecord): Promise<{ error: string | null }> {
   const { error } = await supabase.from("completed_sales").insert({
     id: sale.id, items: sale.items as any, subtotal: sale.subtotal,
     discount: sale.discount as any, discount_amount: sale.discountAmount,
@@ -621,7 +617,11 @@ export async function insertCompletedSale(sale: SaleRecord) {
     salesperson_id: sale.salespersonId ?? null,
     cashier_id: sale.cashierId ?? null,
   });
-  if (error) console.error("insertCompletedSale:", error.message);
+  if (error) {
+    console.error("insertCompletedSale:", error.message);
+    return { error: error.message };
+  }
+  return { error: null };
 }
 
 export async function insertUploadedPrescription(rx: {

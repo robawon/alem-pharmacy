@@ -97,6 +97,7 @@ export interface InPersonOrder {
   receivedBy?: string; // Cashier ID
   receivedAt?: string;
   completedAt?: string;
+  saleId?: string;
 }
 
 export interface DiscountInfo {
