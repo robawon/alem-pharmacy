@@ -237,6 +237,11 @@ export async function fetchPharmacyOrders(): Promise<InPersonOrder[]> {
 }
 
 export async function insertPharmacyOrder(order: InPersonOrder): Promise<{ error: string | null }> {
+  // ── TEMPORARY AUTH DEBUG ──────────────────────────────────────────────────
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  console.log("AUTH USER:", user?.id);
+  console.log("AUTH ERROR:", authError);
+  // ─────────────────────────────────────────────────────────────────────────
   const { error } = await supabase.from("pharmacy_orders").insert({
     id: order.id,
     patient_name: order.patientName,
