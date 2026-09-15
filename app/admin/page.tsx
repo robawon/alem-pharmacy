@@ -151,20 +151,24 @@ function AdminDashboardContent() {
   }, [searchTerm, staffProfiles]);
 
   const weeklyRevenue = useMemo(() => {
-    const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
     const today = new Date();
+    const last7Days = Array.from({ length: 7 }, (_, i) => {
+      return new Date(today.getFullYear(), today.getMonth(), today.getDate() - (6 - i));
+    });
 
-    return days.map((day, index) => {
-      const offset = 6 - index;
+    return last7Days.map((dateObj) => {
+      const dayLabel = dateObj.toLocaleDateString("en-US", { weekday: "short" });
+      const dateString = dateObj.toDateString();
+
       const saleTotal = completedSales
         .filter((sale) => {
+          if (!sale.timestamp) return false;
           const saleDate = new Date(sale.timestamp);
-          const diff = Math.floor((today.getTime() - saleDate.getTime()) / 86400000);
-          return diff === offset;
+          return saleDate.toDateString() === dateString;
         })
         .reduce((sum, sale) => sum + Number(sale.total), 0);
 
-      return { day, revenue: saleTotal };
+      return { day: dayLabel, revenue: saleTotal };
     });
   }, [completedSales]);
 
