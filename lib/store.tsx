@@ -901,20 +901,21 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [addLog, currentUser, catalog, addToCustomerCart]
   );
 
-  const addCatalogItem = useCallback((item: Omit<CatalogItem, "id">) => {
+  const addCatalogItem = useCallback((item: Omit<CatalogItem, "id"> & { batchNumber?: string; expiryDate?: string; safetyThreshold?: number }) => {
     const newItem: CatalogItem = { ...item, id: newId("cat") };
     setCatalog(prev => [newItem, ...prev]);
     insertCatalogItem(newItem).catch(console.error);
     addLog("CATALOG_ITEM_ADDED", `Admin added new medicine: ${item.drugName} (${item.category})`);
 
     // Also create a stock batch so it appears in inventory (Stock & Batch Control table)
+    const formattedBatchNum = item.batchNumber || (item.drugName ? `${item.drugName.replace(/[^a-zA-Z0-9]/g, "").slice(0, 4).toUpperCase()}-${Date.now().toString().slice(-6)}` : `BATCH-${Date.now().toString().slice(-6)}`);
     const newBatch: StockBatch = {
       id: newId("batch"),
       drugName: item.drugName,
       category: item.category,
-      batchNumber: `BATCH-${Date.now()}`,
-      expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
-      safetyThreshold: 10,
+      batchNumber: formattedBatchNum,
+      expiryDate: item.expiryDate || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+      safetyThreshold: item.safetyThreshold !== undefined ? Number(item.safetyThreshold) : 10,
       unitPrice: item.unitPrice || 0,
       quantity: Number(item.quantity) || 0,
       quarantined: false,

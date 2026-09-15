@@ -11,6 +11,16 @@ import { ChevronDown, ChevronUp, CheckCircle, XCircle } from "lucide-react";
 export function ReceivedInPersonOrders() {
   const { inPersonOrders, receiveInPersonOrder, completeInPersonOrder, cancelInPersonOrder } = useStore();
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+  const [cancelNotification, setCancelNotification] = useState<string | null>(null);
+
+  const handleCancelOrder = (orderId: string) => {
+    cancelInPersonOrder(orderId);
+    setExpandedOrderId(null);
+    setCancelNotification(`Order ${orderId} was successfully cancelled.`);
+    setTimeout(() => {
+      setCancelNotification(null);
+    }, 5000);
+  };
 
   const pendingOrders = useMemo(() => {
     return inPersonOrders.filter(order => order.status === "pending_cashier");
@@ -22,9 +32,17 @@ export function ReceivedInPersonOrders() {
 
   if (pendingOrders.length === 0 && receivedOrders.length === 0) {
     return (
-      <Card className="p-8 text-center">
-        <p className="text-gray-500">No in-person orders at this time</p>
-      </Card>
+      <div className="space-y-4">
+        {cancelNotification && (
+          <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm font-medium flex items-center justify-between animate-fade-in">
+            <span>{cancelNotification}</span>
+            <span className="text-xs text-red-300 font-mono">(Disappears in 5s)</span>
+          </div>
+        )}
+        <Card className="p-8 text-center">
+          <p className="text-gray-500">No in-person orders at this time</p>
+        </Card>
+      </div>
     );
   }
 
@@ -121,6 +139,12 @@ export function ReceivedInPersonOrders() {
 
   return (
     <div className="space-y-6">
+      {cancelNotification && (
+        <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm font-medium flex items-center justify-between animate-fade-in">
+          <span>{cancelNotification}</span>
+          <span className="text-xs text-red-300 font-mono">(Disappears in 5s)</span>
+        </div>
+      )}
       {/* Pending Orders Section */}
       {pendingOrders.length > 0 && (
         <div>
@@ -146,10 +170,7 @@ export function ReceivedInPersonOrders() {
                   completeInPersonOrder(order.id);
                   setExpandedOrderId(null);
                 }}
-                onCancel={() => {
-                  cancelInPersonOrder(order.id);
-                  setExpandedOrderId(null);
-                }}
+                onCancel={() => handleCancelOrder(order.id)}
               />
             ))}
           </div>
@@ -178,10 +199,7 @@ export function ReceivedInPersonOrders() {
                   completeInPersonOrder(order.id);
                   setExpandedOrderId(null);
                 }}
-                onCancel={() => {
-                  cancelInPersonOrder(order.id);
-                  setExpandedOrderId(null);
-                }}
+                onCancel={() => handleCancelOrder(order.id)}
               />
             ))}
           </div>

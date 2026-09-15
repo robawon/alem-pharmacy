@@ -62,6 +62,9 @@ export function AddMedicineDialog({ open, onClose }: Props) {
       inStock: Number(form.quantity) > 0,
       hasTax: evaluatedTax.hasTax,
       taxRate: evaluatedTax.taxRate,
+      batchNumber: form.batchNumber.trim() || undefined,
+      expiryDate: form.expiryDate || undefined,
+      safetyThreshold: form.safetyThreshold ? Number(form.safetyThreshold) : undefined,
     } as any);
     setSubmitted(true);
     setTimeout(() => {
