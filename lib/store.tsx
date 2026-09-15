@@ -178,21 +178,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         const parsed = JSON.parse(savedOrders) as InPersonOrder[];
         if (Array.isArray(parsed)) setInPersonOrders(parsed);
       }
-      const savedSales = window.localStorage.getItem(COMPLETED_SALES_KEY);
-      if (savedSales) {
-        const parsed = JSON.parse(savedSales) as SaleRecord[];
-        if (Array.isArray(parsed) && parsed.length > 0) setCompletedSales(parsed);
-      }
-      const savedInv = window.localStorage.getItem(INVENTORY_SYNC_KEY);
-      if (savedInv) {
-        const parsed = JSON.parse(savedInv) as StockBatch[];
-        if (Array.isArray(parsed) && parsed.length > 0) setInventory(parsed);
-      }
-      const savedCat = window.localStorage.getItem(CATALOG_SYNC_KEY);
-      if (savedCat) {
-        const parsed = JSON.parse(savedCat) as CatalogItem[];
-        if (Array.isArray(parsed) && parsed.length > 0) setCatalog(parsed);
-      }
     } catch (error) {
       console.warn("Failed to restore cached state:", error);
     }
@@ -213,48 +198,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       console.warn("Failed to persist in-person orders:", error);
     }
   }, [inPersonOrders]);
-
-  useEffect(() => {
-    try {
-      if (completedSales.length > 0) {
-        const currentStored = window.localStorage.getItem(COMPLETED_SALES_KEY);
-        const newStr = JSON.stringify(completedSales);
-        if (currentStored !== newStr) {
-          window.localStorage.setItem(COMPLETED_SALES_KEY, newStr);
-        }
-      }
-    } catch (error) {
-      console.warn("Failed to persist completed sales:", error);
-    }
-  }, [completedSales]);
-
-  useEffect(() => {
-    try {
-      if (inventory.length > 0) {
-        const currentStored = window.localStorage.getItem(INVENTORY_SYNC_KEY);
-        const newStr = JSON.stringify(inventory);
-        if (currentStored !== newStr) {
-          window.localStorage.setItem(INVENTORY_SYNC_KEY, newStr);
-        }
-      }
-    } catch (error) {
-      console.warn("Failed to persist inventory:", error);
-    }
-  }, [inventory]);
-
-  useEffect(() => {
-    try {
-      if (catalog.length > 0) {
-        const currentStored = window.localStorage.getItem(CATALOG_SYNC_KEY);
-        const newStr = JSON.stringify(catalog);
-        if (currentStored !== newStr) {
-          window.localStorage.setItem(CATALOG_SYNC_KEY, newStr);
-        }
-      }
-    } catch (error) {
-      console.warn("Failed to persist catalog:", error);
-    }
-  }, [catalog]);
 
   // ── Bootstrap from Supabase ──────────────────────────────────────────────
   useEffect(() => {
