@@ -42,8 +42,9 @@ export default function CashierNotificationsPage() {
     [customerOrders]
   );
 
-  const handleCompleteInPersonOrder = (order: any) => {
-    completeInPersonOrder(order.id);
+  const handleCompleteInPersonOrder = async (order: any) => {
+    const completed = await completeInPersonOrder(order.id);
+    if (!completed) return;
     setLastCompletedOrder(order);
     setExpandedOrderId(null);
     setReceiptOpen(true);

@@ -618,7 +618,7 @@ export async function insertCompletedSale(sale: SaleRecord): Promise<{ error: st
     cashier_id: sale.cashierId ?? null,
   });
   if (error) {
-    console.error("insertCompletedSale:", error.message);
+    console.error("Failed to insert completed sale:", error.message);
     return { error: error.message };
   }
   return { error: null };
