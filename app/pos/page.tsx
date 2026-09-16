@@ -152,12 +152,12 @@ export default function PosPage() {
   }
 
   // ─── Complete sale tied to a ready order ────────────────────────
-  function handleCompleteSale() {
+  async function handleCompleteSale() {
     if (store.cart.length === 0) return;
     const tendered = paymentMethod === "cash" ? parseFloat(amountTendered) || 0 : cartTotal;
     const change = paymentMethod === "cash" ? Math.max(0, tendered - cartTotal) : 0;
     const itemsCopy = [...store.cart];
-    store.completeSale({
+    const completed = await store.completeSale({
       items: itemsCopy,
       subtotal,
       discount: store.activeDiscount,
@@ -168,6 +168,8 @@ export default function PosPage() {
       amountTendered: tendered,
       changeDue: change,
     });
+    if (!completed) return;
+
     // Mark the linked order as completed
     if (selectedReadyOrder) {
       store.updateCustomerOrderStatus(selectedReadyOrder.id, "completed");

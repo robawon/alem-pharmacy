@@ -13,9 +13,9 @@ export function Cart() {
 
   const total = cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
 
-  function handleCheckout() {
-    setLastReceiptTotal(total);
-    checkout();
+  async function handleCheckout() {
+    const completed = await checkout();
+    if (completed) setLastReceiptTotal(total);
   }
 
   return (

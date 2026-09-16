@@ -607,7 +607,7 @@ export async function updateCustomerOrderStatus(id: string, status: string) {
   if (error) console.error("updateCustomerOrderStatus:", error.message);
 }
 
-export async function insertCompletedSale(sale: SaleRecord): Promise<{ error: string | null }> {
+export async function insertCompletedSale(sale: SaleRecord): Promise<void> {
   const { error } = await supabase.from("completed_sales").insert({
     id: sale.id, items: sale.items as any, subtotal: sale.subtotal,
     discount: sale.discount as any, discount_amount: sale.discountAmount,
@@ -618,10 +618,8 @@ export async function insertCompletedSale(sale: SaleRecord): Promise<{ error: st
     cashier_id: sale.cashierId ?? null,
   });
   if (error) {
-    console.error("Failed to insert completed sale:", error.message);
-    return { error: error.message };
+    throw new Error(`insertCompletedSale failed: ${error.message}`);
   }
-  return { error: null };
 }
 
 export async function insertUploadedPrescription(rx: {
