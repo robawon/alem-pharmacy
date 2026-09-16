@@ -153,28 +153,6 @@ export default function LoginPage() {
         password,
       });
 
-      // Bypass email verification restriction if user password is correct or if Supabase blocks unconfirmed email
-      if (signInError && (signInError.message.toLowerCase().includes("email not confirmed") || signInError.message.toLowerCase().includes("not confirmed"))) {
-        const { data: profile } = await supabase
-          .from("staff_profiles")
-          .select("id, name, role")
-          .eq("email", email.trim())
-          .maybeSingle();
-
-        const role = profile?.role || (email.trim().toLowerCase().includes("admin") ? "admin" : "customer");
-        const route = ROLE_ROUTE_MAP[role] || "/admin";
-
-        login({
-          id: profile?.id || "admin-fallback-id",
-          name: profile?.name || "Administrator",
-          role: role,
-        });
-
-        router.push(route);
-        router.refresh();
-        return;
-      }
-
       if (signInError || !data.user) {
         throw signInError ?? new Error("Unable to sign in with the provided credentials.");
       }

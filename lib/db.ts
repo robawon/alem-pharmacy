@@ -3,12 +3,14 @@
  * Database helper functions — thin wrappers around supabase client.
  * Each function maps Supabase snake_case columns → app camelCase types.
  */
-import { supabase } from "./supabase";
+import { createClient } from "./supabase/client";
 import type {
   AuditLogEntry, CatalogItem, CustomerOrder, Prescription,
   SaleRecord, StaffProfile, StockBatch, CustomerContactInfo,
   InPersonOrder, InPersonOrderStatus,
 } from "./types";
+
+const supabase = createClient();
 
 // ── Mappers ─────────────────────────────────────────────────────────────────
 
@@ -607,19 +609,52 @@ export async function updateCustomerOrderStatus(id: string, status: string) {
   if (error) console.error("updateCustomerOrderStatus:", error.message);
 }
 
-export async function insertCompletedSale(sale: SaleRecord): Promise<void> {
-  const { error } = await supabase.from("completed_sales").insert({
-    id: sale.id, items: sale.items as any, subtotal: sale.subtotal,
-    discount: sale.discount as any, discount_amount: sale.discountAmount,
-    tax: sale.tax, total: sale.total, payment_method: sale.paymentMethod,
-    amount_tendered: sale.amountTendered, change_due: sale.changeDue,
+export async function insertCompletedSale(sale: SaleRecord): Promise<Record<string, unknown>> {
+  const payload = {
+    id: sale.id,
+    items: sale.items,
+    subtotal: sale.subtotal,
+    discount: sale.discount,
+    discount_amount: sale.discountAmount,
+    tax: sale.tax,
+    total: sale.total,
+    payment_method: sale.paymentMethod,
+    amount_tendered: sale.amountTendered,
+    change_due: sale.changeDue,
     timestamp: sale.timestamp,
-    salesperson_id: sale.salespersonId ?? null,
-    cashier_id: sale.cashierId ?? null,
-  });
-  if (error) {
-    throw new Error(`insertCompletedSale failed: ${error.message}`);
+  };
+
+  console.log("=== CASHIER SALE START ===");
+  console.log("SALE RECORD:", sale);
+
+  if (!Number.isFinite(sale.total) || Number.isNaN(Date.parse(sale.timestamp))) {
+    throw new Error("completed_sales insert failed: sale total or timestamp is invalid");
   }
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  console.log("SUPABASE AUTH USER:", user);
+  console.log("SUPABASE AUTH ERROR:", authError);
+  const { data: sessionData } = await supabase.auth.getSession();
+  console.log("SUPABASE SESSION:", sessionData.session);
+
+  const { data, error } = await supabase
+    .from("completed_sales")
+    .insert(payload)
+    .select()
+    .single();
+
+  if (error) {
+    console.error("COMPLETED SALE INSERT FAILED:", error);
+    console.error("=== CASHIER SALE DATABASE ERROR ===", error);
+    throw new Error(`completed_sales insert failed: ${error.message}`);
+  }
+
+  console.log("=== CASHIER SALE DATABASE RESULT ===", data);
+  console.log("COMPLETED SALE INSERTED:", data);
+  return data as Record<string, unknown>;
 }
 
 export async function insertUploadedPrescription(rx: {
