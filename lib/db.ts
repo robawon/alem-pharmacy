@@ -12,6 +12,27 @@ import type {
 
 const supabase = createClient();
 
+export interface SupabaseWriteError {
+  message: string;
+  details: string | null;
+  hint: string | null;
+  code: string | null;
+}
+
+function toSupabaseWriteError(error: {
+  message: string;
+  details?: string | null;
+  hint?: string | null;
+  code?: string;
+}): SupabaseWriteError {
+  return {
+    message: error.message,
+    details: error.details ?? null,
+    hint: error.hint ?? null,
+    code: error.code ?? null,
+  };
+}
+
 // ── Mappers ─────────────────────────────────────────────────────────────────
 
 function toStockBatch(r: any): StockBatch {
@@ -252,10 +273,17 @@ export async function insertPharmacyOrder(order: InPersonOrder): Promise<{ error
     status: order.status,        // 'pending_cashier' — valid in pharmacy_orders
     created_by: order.createdBy,
     created_at: order.createdAt,
-  });
+  };
+  const { error } = await supabase.from("pharmacy_orders").insert(payload);
   if (error) {
-    console.error("insertPharmacyOrder:", error.message);
-    return { error: error.message };
+    const errorDetails = [
+      `message: ${error.message}`,
+      `details: ${error.details || "none"}`,
+      `hint: ${error.hint || "none"}`,
+      `code: ${error.code || "unknown"}`,
+    ].join("\n");
+    console.error("insertPharmacyOrder failed:", errorDetails, { error, payload });
+    return { error: errorDetails };
   }
   return { error: null };
 }
@@ -285,6 +313,30 @@ export async function updatePharmacyOrder(
   return { error: null };
 }
 
+export async function updatePharmacyOrderStatus(
+  orderId: string,
+  status: InPersonOrderStatus,
+  extra?: {
+    receivedBy?: string | null;
+    receivedAt?: string | null;
+    completedAt?: string | null;
+    saleId?: string | null;
+  }
+): Promise<{ error: string | null }> {
+  return updatePharmacyOrder(orderId, { status, ...extra });
+}
+
+export async function getPharmacyOrderSaleId(orderId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("pharmacy_orders")
+    .select("sale_id")
+    .eq("id", orderId)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return data.sale_id ?? null;
+}
+
 export async function claimPharmacyOrder(orderId: string, saleId: string): Promise<{ claimed: boolean; error: string | null }> {
   const { data, error } = await supabase
     .from("pharmacy_orders")
@@ -303,32 +355,14 @@ export async function claimPharmacyOrder(orderId: string, saleId: string): Promi
 }
 
 export async function fetchCompletedSales(): Promise<SaleRecord[]> {
-  // Join completed_sales with staff_profiles table using salesperson_id & cashier_id foreign keys
   const { data, error } = await supabase
     .from("completed_sales")
-    .select("*, pharmacist:staff_profiles!salesperson_id(id, name, email, role), cashier_staff:staff_profiles!cashier_id(id, name, email, role)")
+    .select("*")
     .order("timestamp", { ascending: false });
 
   if (error) {
-    // Fallback: fetch without explicit FK join alias if relationship is implicit or unconstrained
-    const { data: fallbackData, error: fallbackErr } = await supabase
-      .from("completed_sales")
-      .select("*, staff_profiles(id, name)")
-      .order("timestamp", { ascending: false });
-
-    if (fallbackErr) {
-      const { data: simpleData, error: simpleErr } = await supabase
-        .from("completed_sales")
-        .select("*")
-        .order("timestamp", { ascending: false });
-
-      if (simpleErr) {
-        console.error("fetchCompletedSales:", simpleErr.message);
-        return [];
-      }
-      return (simpleData ?? []).map(toSaleRecord);
-    }
-    return (fallbackData ?? []).map(toSaleRecord);
+    console.error("fetchCompletedSales:", error.message);
+    return [];
   }
 
   return (data ?? []).map(toSaleRecord);
@@ -611,53 +645,51 @@ export async function updateCustomerOrderStatus(id: string, status: string) {
   if (error) console.error("updateCustomerOrderStatus:", error.message);
 }
 
-export async function insertCompletedSale(sale: SaleRecord): Promise<Record<string, unknown>> {
+export async function insertCompletedSale(sale: SaleRecord) {
+  const validPaymentMethod = ["cash", "card", "mobile"].includes(sale.paymentMethod)
+    ? sale.paymentMethod
+    : "cash";
+
   const payload = {
     id: sale.id,
-    items: sale.items,
-    subtotal: sale.subtotal,
-    discount: sale.discount,
-    discount_amount: sale.discountAmount,
-    tax: sale.tax,
-    total: sale.total,
-    payment_method: sale.paymentMethod,
-    amount_tendered: sale.amountTendered,
-    change_due: sale.changeDue,
-    timestamp: sale.timestamp,
+    items: Array.isArray(sale.items) ? sale.items : [],
+    subtotal: Number(sale.subtotal) || 0,
+    discount: sale.discount ?? null,
+    discount_amount: Number(sale.discountAmount) || 0,
+    tax: Number(sale.tax) || 0,
+    total: Number(sale.total) || 0,
+    payment_method: validPaymentMethod,
+    amount_tendered: Number(sale.amountTendered) || 0,
+    change_due: Number(sale.changeDue) || 0,
+    timestamp: sale.timestamp || new Date().toISOString(),
   };
-
-  console.log("=== CASHIER SALE START ===");
-  console.log("SALE RECORD:", sale);
-
-  if (!Number.isFinite(sale.total) || Number.isNaN(Date.parse(sale.timestamp))) {
-    throw new Error("completed_sales insert failed: sale total or timestamp is invalid");
-  }
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-  console.log("SUPABASE AUTH USER:", user);
-  console.log("SUPABASE AUTH ERROR:", authError);
-  const { data: sessionData } = await supabase.auth.getSession();
-  console.log("SUPABASE SESSION:", sessionData.session);
 
   const { data, error } = await supabase
     .from("completed_sales")
     .insert(payload)
-    .select()
-    .single();
+    .select();
 
   if (error) {
-    console.error("COMPLETED SALE INSERT FAILED:", error);
-    console.error("=== CASHIER SALE DATABASE ERROR ===", error);
-    throw new Error(`completed_sales insert failed: ${error.message}`);
+    console.error("insertCompletedSale failed:", {
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+      code: error.code,
+      payload,
+    });
+    throw new Error(
+      `completed_sales INSERT failed: ${error.message}${error.details ? ` (${error.details})` : ""}`,
+    );
   }
 
-  console.log("=== CASHIER SALE DATABASE RESULT ===", data);
-  console.log("COMPLETED SALE INSERTED:", data);
-  return data as Record<string, unknown>;
+  if (!data || data.length === 0) {
+    throw new Error("completed_sales INSERT returned no row.");
+  }
+
+  return toSaleRecord(data[0]);
 }
+
+
 
 export async function insertUploadedPrescription(rx: {
   id: string; fileName: string; fileUrl?: string; doctorName: string;

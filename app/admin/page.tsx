@@ -69,6 +69,7 @@ import { useStore } from "@/lib/store";
 import type { Role, StaffProfile } from "@/lib/types";
 import { currency } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
+import { getLast7CalendarDays, getLocalDateKey, isDateIn7DayWindow } from "@/lib/date-range";
 
 const roleOptions: Role[] = ["admin", "pharmacist", "cashier", "inventory", "customer"];
 const roleLabels: Record<Role, string> = {
@@ -105,6 +106,7 @@ function AdminDashboardContent() {
   const [activeSheetProfile, setActiveSheetProfile] = useState<StaffProfile | null>(null);
 
   const [pendingVerificationCount, setPendingVerificationCount] = useState<number | null>(null);
+  const [dashboardDate, setDashboardDate] = useState(() => new Date());
 
   useEffect(() => {
     async function loadPendingCount() {
@@ -137,6 +139,19 @@ function AdminDashboardContent() {
     };
   }, []);
 
+  useEffect(() => {
+    const scheduleNextDayRefresh = () => {
+      const now = new Date();
+      const nextDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+      return window.setTimeout(() => {
+        setDashboardDate(new Date());
+      }, Math.max(1000, nextDay.getTime() - now.getTime() + 100));
+    };
+
+    const timeoutId = scheduleNextDayRefresh();
+    return () => window.clearTimeout(timeoutId);
+  }, [dashboardDate]);
+
   const totalRevenue = completedSales.reduce((sum, entry) => sum + Number(entry.total), 0);
   const totalUnits = inventory.reduce((sum, item) => sum + item.quantity, 0);
   const unsoldValue = inventory.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
@@ -163,57 +178,47 @@ function AdminDashboardContent() {
   }, [searchTerm, staffProfiles]);
 
   const weeklyRevenue = useMemo(() => {
-    const today = new Date();
-    const last7Days = Array.from({ length: 7 }, (_, i) => {
-      return new Date(today.getFullYear(), today.getMonth(), today.getDate() - (6 - i));
+    const days = getLast7CalendarDays(dashboardDate);
+    const revenueByDay = new Map<string, number>();
+
+    completedSales.forEach((sale) => {
+      const saleDate = new Date(sale.timestamp);
+      const dayKey = getLocalDateKey(saleDate);
+      revenueByDay.set(dayKey, (revenueByDay.get(dayKey) ?? 0) + Number(sale.total || 0));
     });
 
-    return last7Days.map((dateObj) => {
-      const dayLabel = dateObj.toLocaleDateString("en-US", { weekday: "short" });
-      const dateString = dateObj.toDateString();
-
-      const saleTotal = completedSales
-        .filter((sale) => {
-          if (!sale.timestamp) return false;
-          const saleDate = new Date(sale.timestamp);
-          return saleDate.toDateString() === dateString;
-        })
-        .reduce((sum, sale) => sum + Number(sale.total), 0);
-
-      return { day: dayLabel, revenue: saleTotal };
-    });
-  }, [completedSales]);
+    return days.map((day) => ({
+      day: day.label,
+      revenue: revenueByDay.get(day.key) ?? 0,
+    }));
+  }, [completedSales, dashboardDate]);
 
   const recentTransactions = useMemo(
-    () =>
-      completedSales.slice(0, 5).map((sale) => {
-        const pharmStaff = staffProfiles.find(
-          (s) => s.id === sale.salespersonId || s.role === "pharmacist"
-        );
-        const pharmacistName =
-          sale.pharmacistName ||
-          (sale.salespersonId ? staffProfiles.find((s) => s.id === sale.salespersonId)?.name : undefined) ||
-          pharmStaff?.name ||
-          "Dr. Bethel Alemu";
+    () => {
+      const days = getLast7CalendarDays(dashboardDate);
 
-        const cashierStaff = staffProfiles.find(
-          (s) => s.id === sale.cashierId || s.role === "cashier"
-        );
-        const cashierName =
-          sale.cashierName ||
-          (sale.cashierId ? staffProfiles.find((s) => s.id === sale.cashierId)?.name : undefined) ||
-          cashierStaff?.name ||
-          "Yonas Girma";
+      return completedSales
+        .filter((sale) => isDateIn7DayWindow(new Date(sale.timestamp), days))
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+        .map((sale) => {
+          const pharmacistName = sale.pharmacistName ||
+            (sale.salespersonId ? staffProfiles.find((s) => s.id === sale.salespersonId)?.name : undefined) ||
+            "N/A";
+          const cashierName = sale.cashierName ||
+            (sale.cashierId ? staffProfiles.find((s) => s.id === sale.cashierId)?.name : undefined) ||
+            "N/A";
 
-        return {
-          id: sale.id,
-          pharmacist: pharmacistName,
-          cashier: cashierName,
-          time: new Date(sale.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          amount: Number(sale.total),
-        };
-      }),
-    [completedSales, staffProfiles],
+          return {
+            id: sale.id,
+            pharmacist: pharmacistName,
+            cashier: cashierName,
+            time: new Date(sale.timestamp).toLocaleString([], { dateStyle: "short", timeStyle: "short" }),
+            amount: Number(sale.total),
+            paymentMethod: sale.paymentMethod,
+          };
+        });
+    },
+    [completedSales, dashboardDate, staffProfiles],
   );
 
   const handleRoleChange = (profileId: string, role: Role) => {
@@ -339,6 +344,7 @@ function AdminDashboardContent() {
                   <TableHead>Pharmacist</TableHead>
                   <TableHead>Time</TableHead>
                   <TableHead>Cashier</TableHead>
+                  <TableHead>Payment</TableHead>
                   <TableHead className="text-right">Total</TableHead>
                   <TableHead className="text-right">Status</TableHead>
                 </TableRow>
@@ -346,17 +352,18 @@ function AdminDashboardContent() {
               <TableBody>
                 {recentTransactions.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="py-8 text-center text-sm text-muted">
-                      No completed sales yet.
+                    <TableCell colSpan={7} className="py-8 text-center text-sm text-muted">
+                      No transactions in the last 7 days.
                     </TableCell>
                   </TableRow>
                 ) : (
                   recentTransactions.map((tx) => (
                     <TableRow key={tx.id}>
                       <TableCell className="font-mono text-xs">{tx.id}</TableCell>
-                      <TableCell className="font-medium text-slate-200">{tx.pharmacist || "System"}</TableCell>
+                      <TableCell className="font-medium text-slate-200">{tx.pharmacist}</TableCell>
                       <TableCell>{tx.time}</TableCell>
-                      <TableCell className="font-medium text-slate-200">{tx.cashier || "N/A"}</TableCell>
+                      <TableCell className="font-medium text-slate-200">{tx.cashier}</TableCell>
+                      <TableCell className="capitalize">{tx.paymentMethod}</TableCell>
                       <TableCell className="text-right font-medium">{currency(tx.amount)}</TableCell>
                       <TableCell className="text-right">
                         <Badge variant="success">Approved</Badge>

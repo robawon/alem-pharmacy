@@ -72,13 +72,13 @@ interface StoreContextType extends State {
   quarantineBatch: (batchId: string) => void;
   rejectPrescription: (id: string, reason: string) => void;
   removeFromCart: (batchId: string) => void;
-  checkout: () => void;
+  checkout: () => Promise<boolean>;
   addToCart: (batchId: string) => void;
   updateCartQty: (batchId: string, delta: number) => void;
   parkCart: (label: string) => void;
   resumeCart: (cartId: string) => void;
   applyDiscount: (discount: DiscountInfo) => void;
-  completeSale: (sale: Omit<SaleRecord, "id" | "timestamp">) => void;
+  completeSale: (sale: Omit<SaleRecord, "id" | "timestamp">) => Promise<boolean>;
   cancelSale: () => void;
   importRxToCart: (rxId: string) => void;
   closeShift: (closingCash: number) => void;
@@ -93,9 +93,9 @@ interface StoreContextType extends State {
   approveUploadedPrescription: (id: string, selectedCatalogId?: string) => void;
   rejectUploadedPrescription: (id: string, reason?: string) => void;
   // In-person order actions (Pharmacist to Cashier)
-  createInPersonOrder: (patientName: string, items: InPersonOrderItem[]) => void;
+  createInPersonOrder: (patientName: string, items: InPersonOrderItem[]) => Promise<boolean>;
   receiveInPersonOrder: (orderId: string) => void;
-  completeInPersonOrder: (orderId: string) => void;
+  completeInPersonOrder: (orderId: string) => Promise<boolean>;
   cancelInPersonOrder: (orderId: string) => void;
   // Dashboard refresh
   refreshDashboardData: () => Promise<void>;
@@ -193,7 +193,18 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         fetchPharmacyOrders().then(setInPersonOrders).catch(console.error);
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "completed_sales" }, () => {
-        fetchCompletedSales().then(setCompletedSales).catch(console.error);
+        fetchCompletedSales().then((fetched) => {
+          setCompletedSales((prev) => {
+            const map = new Map<string, SaleRecord>();
+            fetched.forEach((s) => map.set(s.id, s));
+            prev.forEach((s) => {
+              if (!map.has(s.id)) map.set(s.id, s);
+            });
+            return Array.from(map.values()).sort(
+              (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+            );
+          });
+        }).catch(console.error);
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "uploaded_prescriptions" }, () => {
         fetchUploadedPrescriptions().then(setUploadedPrescriptions).catch(console.error);
@@ -206,8 +217,25 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       })
       .subscribe();
 
+    // Fallback polling loop (every 15 seconds) to ensure Admin Dashboard updates even if WebSockets reconnect
+    const pollInterval = setInterval(() => {
+      fetchCompletedSales().then((fetched) => {
+        setCompletedSales((prev) => {
+          const map = new Map<string, SaleRecord>();
+          fetched.forEach((s) => map.set(s.id, s));
+          prev.forEach((s) => {
+            if (!map.has(s.id)) map.set(s.id, s);
+          });
+          return Array.from(map.values()).sort(
+            (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          );
+        });
+      }).catch(console.error);
+    }, 15000);
+
     return () => {
       supabase.removeChannel(channel);
+      clearInterval(pollInterval);
     };
   }, []);
 
@@ -522,7 +550,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     addLog("APPLY_DISCOUNT", `Applied ${discount.percent}% discount: ${discount.reason}`);
   }, [addLog]);
 
-  const completeSale = useCallback((sale: Omit<SaleRecord, "id" | "timestamp">) => {
+  const completeSale = useCallback(async (sale: Omit<SaleRecord, "id" | "timestamp">): Promise<boolean> => {
     const cId = sale.cashierId || currentUser?.id;
     const cName = sale.cashierName || staffProfiles.find(s => s.id === cId)?.name || currentUser?.name;
     const sId = sale.salespersonId || (currentUser?.role === "pharmacist" ? currentUser?.id : undefined);
@@ -536,7 +564,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       cashierId: cId,
       cashierName: cName,
     };
-    setCompletedSales(prev => [...prev, record]);
+    setCompletedSales(prev => {
+      const map = new Map<string, SaleRecord>();
+      [record, ...prev].forEach(s => map.set(s.id, s));
+      return Array.from(map.values()).sort(
+        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      );
+    });
     setCart([]);
     setActiveDiscount(null);
 
@@ -566,9 +600,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       })
     );
 
-    insertCompletedSale(record).catch(console.error);
+    try {
+      await insertCompletedSale(record);
+    } catch (err: any) {
+      console.error("completeSale failed:", err);
+      setCompletedSales(prev => prev.filter(s => s.id !== record.id));
+      alert(`Failed to record sale: ${err.message || err}`);
+      return false;
+    }
     addLog("COMPLETE_SALE", `Completed sale ${record.id} — ${currency(sale.total)} via ${sale.paymentMethod}`);
-  }, [addLog, currentUser]);
+    return true;
+  }, [addLog, currentUser, staffProfiles]);
 
   const cancelSale = useCallback(() => {
     setCart([]);
@@ -591,8 +633,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     addLog("CLOSE_SHIFT", `Closed shift with ${currency(closingCash)} cash`);
   }, [addLog]);
 
-  const checkout = useCallback(() => {
-    if (cart.length === 0) return;
+  const checkout = useCallback(async (): Promise<boolean> => {
+    if (cart.length === 0) return false;
     const total = cart.reduce((acc, item) => acc + item.unitPrice * item.quantity, 0);
     const record: SaleRecord = {
       id: newId("sale"), items: cart, subtotal: total, discount: activeDiscount,
@@ -600,9 +642,23 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       amountTendered: total, changeDue: 0, timestamp: new Date().toISOString(),
       salespersonId: currentUser?.id,
     };
-    setCompletedSales(prev => [...prev, record]);
+    setCompletedSales(prev => {
+      const map = new Map<string, SaleRecord>();
+      [record, ...prev].forEach(s => map.set(s.id, s));
+      return Array.from(map.values()).sort(
+        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      );
+    });
     setCart([]);
-    insertCompletedSale(record).catch(console.error);
+
+    try {
+      await insertCompletedSale(record);
+    } catch (err: any) {
+      console.error("checkout failed:", err);
+      setCompletedSales(prev => prev.filter(s => s.id !== record.id));
+      alert(`Checkout failed to save: ${err.message || err}`);
+      return false;
+    }
 
     // Deduct stock
     setInventory(prev =>
@@ -630,6 +686,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     );
 
     addLog("CHECKOUT", `Quick checkout — ${currency(total)}`);
+    return true;
   }, [cart, activeDiscount, addLog, currentUser]);
 
   // ── Customer / Portal ────────────────────────────────────────────────────
@@ -992,8 +1049,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [addLog, inventory, catalog]);
 
   // ── In-Person Orders (Pharmacist → Cashier) ──────────────────────────────
-  const createInPersonOrder = useCallback(async (patientName: string, items: (InPersonOrderItem & { category?: string })[]) => {
-    if (items.length === 0 || !currentUser) return;
+  const createInPersonOrder = useCallback(async (patientName: string, items: (InPersonOrderItem & { category?: string })[]): Promise<boolean> => {
+    if (items.length === 0 || !currentUser) return false;
     const orderId = newId("ipo");
     const now = new Date().toISOString();
     const subtotal = items.reduce((acc, item) => acc + item.unitPrice * item.quantity, 0);
@@ -1021,9 +1078,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setInPersonOrders(prev => prev.filter(o => o.id !== orderId));
       console.error("createInPersonOrder: Supabase insert failed:", error);
       alert(`Failed to send order to cashier: ${error}`);
-      return;
+      return false;
     }
     addLog("IN_PERSON_ORDER_CREATED", `Pharmacist created order ${orderId} for ${patientName} — ${items.length} items, ${currency(order.total)}`);
+    return true;
   }, [currentUser, addLog]);
 
   const receiveInPersonOrder = useCallback((orderId: string) => {
@@ -1045,24 +1103,21 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [currentUser, addLog]);
 
 
-  const completeInPersonOrder = useCallback(async (orderId: string) => {
+  const completeInPersonOrder = useCallback(async (orderId: string): Promise<boolean> => {
     const now = new Date().toISOString();
     const order = inPersonOrders.find(o => o.id === orderId);
-    if (!order) return;
+    if (!order) return false;
 
     // Prevent double-completion (local state guard)
-    if (order.status === "completed") return;
+    if (order.status === "completed") return false;
 
     // DB-level duplicate guard: check if sale_id already set (handles realtime race)
     const existingSaleId = await getPharmacyOrderSaleId(orderId);
     if (existingSaleId) {
       // Order was already completed by another session — just sync local state
       setInPersonOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: "completed", completedAt: now } : o));
-      return;
+      return false;
     }
-
-    // Optimistic local update
-    setInPersonOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: "completed", completedAt: now } : o));
 
     const creatorId = order.createdBy || currentUser?.id;
     const pharmacistProfile = staffProfiles.find(s => s.id === creatorId);
@@ -1093,20 +1148,32 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       cashierName: cashierProfile?.name,
     };
 
-    // Optimistic sales state update
+    // Optimistic sales state update (newest first)
     setCompletedSales(prev => {
-      // Guard against duplicate if realtime fires before optimistic update
-      if (prev.some(s => s.id === saleRecord.id)) return prev;
-      return [...prev, saleRecord];
+      const map = new Map<string, SaleRecord>();
+      [saleRecord, ...prev].forEach(s => map.set(s.id, s));
+      return Array.from(map.values()).sort(
+        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      );
     });
+    setInPersonOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: "completed", completedAt: now } : o));
 
-    // Persist: mark order completed and stamp sale_id atomically to prevent duplicates
-    updatePharmacyOrderStatus(orderId, "completed", {
-      completedAt: now,
-      saleId: saleRecord.id,
-    }).catch(console.error);
-    // Persist: insert exactly one completed_sales record
-    insertCompletedSale(saleRecord).catch(console.error);
+    try {
+      // Persist: insert completed_sales record FIRST
+      await insertCompletedSale(saleRecord);
+      // Persist: mark order completed and stamp sale_id atomically
+      await updatePharmacyOrderStatus(orderId, "completed", {
+        completedAt: now,
+        saleId: saleRecord.id,
+      });
+    } catch (err: any) {
+      console.error("completeInPersonOrder insert failed:", err);
+      // Revert optimistic updates
+      setInPersonOrders(prev => prev.map(o => o.id === orderId ? order : o));
+      setCompletedSales(prev => prev.filter(s => s.id !== saleRecord.id));
+      alert(`Could not complete order: ${err.message || err}`);
+      return false;
+    }
 
     // Deduct stock for the in-person order items
     setInventory(prev =>
@@ -1136,6 +1203,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     );
 
     addLog("IN_PERSON_ORDER_COMPLETED", `Order ${orderId} completed and paid — Receipt ${saleRecord.id} created`);
+    return true;
   }, [inPersonOrders, addLog, currentUser, staffProfiles]);
 
   const cancelInPersonOrder = useCallback((orderId: string) => {
