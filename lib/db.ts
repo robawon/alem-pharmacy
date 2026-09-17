@@ -240,7 +240,9 @@ export async function fetchPharmacyOrders(): Promise<InPersonOrder[]> {
 }
 
 export async function insertPharmacyOrder(order: InPersonOrder): Promise<{ error: string | null }> {
-  const { error } = await supabase.from("pharmacy_orders").insert({
+  // Client-side Supabase call: verify Supabase Dashboard has an INSERT RLS policy
+  // for pharmacy_orders that permits authenticated users to write rows.
+  const payload = {
     id: order.id,
     patient_name: order.patientName,
     items: order.items,          // JSONB — no serialisation needed
