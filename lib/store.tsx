@@ -1104,105 +1104,107 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
 
   const completeInPersonOrder = useCallback(async (orderId: string): Promise<boolean> => {
-    const now = new Date().toISOString();
-    const order = inPersonOrders.find(o => o.id === orderId);
-    if (!order) return false;
+    const supabase = createClient();
 
-    // Prevent double-completion (local state guard)
-    if (order.status === "completed") return false;
+    const { data, error } = await supabase.rpc(
+      "complete_pharmacy_order",
+      { p_order_id: orderId }
+    );
 
-    // DB-level duplicate guard: check if sale_id already set (handles realtime race)
-    const existingSaleId = await getPharmacyOrderSaleId(orderId);
-    if (existingSaleId) {
-      // Order was already completed by another session — just sync local state
-      setInPersonOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: "completed", completedAt: now } : o));
+    if (error) {
+      console.error("complete_pharmacy_order RPC error:", error);
+      alert(`Could not complete order: ${error.message || error}`);
       return false;
     }
 
-    const creatorId = order.createdBy || currentUser?.id;
+    if (!data || data.success === false) {
+      console.error("complete_pharmacy_order failed:", data?.error || "Unknown error");
+      alert(`Could not complete order: ${data?.error || "Completion failed"}`);
+      return false;
+    }
+
+    const completedSaleId = data.sale_id;
+    const now = new Date().toISOString();
+    const order = inPersonOrders.find(o => o.id === orderId);
+
+    // Update local inPersonOrders to status completed
+    setInPersonOrders(prev => prev.map(o => o.id === orderId ? {
+      ...o,
+      status: "completed",
+      completedAt: now,
+      saleId: completedSaleId,
+    } : o));
+
+    const creatorId = order?.createdBy || currentUser?.id;
     const pharmacistProfile = staffProfiles.find(s => s.id === creatorId);
     const cashierId = currentUser?.id;
     const cashierProfile = staffProfiles.find(s => s.id === cashierId) || currentUser;
 
-    // Build exactly ONE sale record
-    const saleRecord: SaleRecord = {
-      id: newId("sale"),
-      items: order.items.map(item => ({
-        batchId: item.id,
-        drugName: item.drugName,
-        unitPrice: item.unitPrice,
-        quantity: item.quantity,
-      })),
-      subtotal: order.subtotal,
-      discount: null,
-      discountAmount: 0,
-      tax: order.tax,
-      total: order.total,
-      paymentMethod: "cash",
-      amountTendered: order.total,
-      changeDue: 0,
-      timestamp: now,
-      salespersonId: creatorId,
-      pharmacistName: pharmacistProfile?.name,
-      cashierId: cashierId,
-      cashierName: cashierProfile?.name,
-    };
+    if (order) {
+      const saleRecord: SaleRecord = {
+        id: completedSaleId,
+        items: order.items.map(item => ({
+          batchId: item.id,
+          drugName: item.drugName,
+          unitPrice: item.unitPrice,
+          quantity: item.quantity,
+        })),
+        subtotal: order.subtotal,
+        discount: null,
+        discountAmount: 0,
+        tax: order.tax,
+        total: order.total,
+        paymentMethod: "cash",
+        amountTendered: order.total,
+        changeDue: 0,
+        timestamp: now,
+        salespersonId: creatorId,
+        pharmacistName: pharmacistProfile?.name,
+        cashierId: cashierId,
+        cashierName: cashierProfile?.name,
+      };
 
-    // Optimistic sales state update (newest first)
-    setCompletedSales(prev => {
-      const map = new Map<string, SaleRecord>();
-      [saleRecord, ...prev].forEach(s => map.set(s.id, s));
-      return Array.from(map.values()).sort(
-        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-      );
-    });
-    setInPersonOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: "completed", completedAt: now } : o));
-
-    try {
-      // Persist: insert completed_sales record FIRST
-      await insertCompletedSale(saleRecord);
-      // Persist: mark order completed and stamp sale_id atomically
-      await updatePharmacyOrderStatus(orderId, "completed", {
-        completedAt: now,
-        saleId: saleRecord.id,
+      // Update local completedSales
+      setCompletedSales(prev => {
+        const map = new Map<string, SaleRecord>();
+        [saleRecord, ...prev].forEach(s => map.set(s.id, s));
+        return Array.from(map.values()).sort(
+          (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        );
       });
-    } catch (err: any) {
-      console.error("completeInPersonOrder insert failed:", err);
-      // Revert optimistic updates
-      setInPersonOrders(prev => prev.map(o => o.id === orderId ? order : o));
-      setCompletedSales(prev => prev.filter(s => s.id !== saleRecord.id));
-      alert(`Could not complete order: ${err.message || err}`);
-      return false;
+
+      // Update inventory quantities
+      setInventory(prev =>
+        prev.map(batch => {
+          const soldItem = order.items.find(item =>
+            item.drugName.toLowerCase() === batch.drugName.toLowerCase()
+          );
+          if (soldItem) {
+            deductInventoryStock(batch.id, soldItem.quantity).catch(console.error);
+            return { ...batch, quantity: Math.max(0, batch.quantity - soldItem.quantity) };
+          }
+          return batch;
+        })
+      );
+
+      // Update catalog quantities
+      setCatalog(prev =>
+        prev.map(cat => {
+          const soldItem = order.items.find(item =>
+            item.drugName.toLowerCase() === cat.drugName.toLowerCase()
+          );
+          if (soldItem) {
+            deductCatalogStock(cat.id, soldItem.quantity).catch(console.error);
+            const newQty = Math.max(0, cat.quantity - soldItem.quantity);
+            return { ...cat, quantity: newQty, inStock: newQty > 0 };
+          }
+          return cat;
+        })
+      );
     }
 
-    // Deduct stock for the in-person order items
-    setInventory(prev =>
-      prev.map(batch => {
-        const soldItem = order.items.find(item =>
-          item.drugName.toLowerCase() === batch.drugName.toLowerCase()
-        );
-        if (soldItem) {
-          deductInventoryStock(batch.id, soldItem.quantity).catch(console.error);
-          return { ...batch, quantity: Math.max(0, batch.quantity - soldItem.quantity) };
-        }
-        return batch;
-      })
-    );
-    setCatalog(prev =>
-      prev.map(cat => {
-        const soldItem = order.items.find(item =>
-          item.drugName.toLowerCase() === cat.drugName.toLowerCase()
-        );
-        if (soldItem) {
-          deductCatalogStock(cat.id, soldItem.quantity).catch(console.error);
-          const newQty = Math.max(0, cat.quantity - soldItem.quantity);
-          return { ...cat, quantity: newQty, inStock: newQty > 0 };
-        }
-        return cat;
-      })
-    );
-
-    addLog("IN_PERSON_ORDER_COMPLETED", `Order ${orderId} completed and paid — Receipt ${saleRecord.id} created`);
+    // Add the audit log
+    addLog("IN_PERSON_ORDER_COMPLETED", `Order ${orderId} completed and paid — Receipt ${completedSaleId} created`);
     return true;
   }, [inPersonOrders, addLog, currentUser, staffProfiles]);
 
