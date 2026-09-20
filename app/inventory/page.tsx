@@ -11,7 +11,7 @@ import { AddMedicineDialog } from "@/components/ui/AddMedicineDialog";
 import { useStore } from "@/lib/store";
 import Link from "next/link";
 import { Logo } from "@/components/ui/Logo";
-import { Plus, Pill, ArrowLeft } from "lucide-react";
+import { Plus, Pill, ArrowLeft, Sparkles } from "lucide-react";
 
 export default function InventoryPage() {
   return (
@@ -45,13 +45,25 @@ function InventoryContent() {
             <p className="text-sm text-muted">Filterable inventory of every drug batch, with expiry and safety-threshold tracking.</p>
           </div>
         </div>
-        <Button
-          onClick={() => setShowAddMedicine(true)}
-          className="gap-2 bg-teal-600 hover:bg-teal-700 text-white font-semibold shrink-0"
-        >
-          <Plus className="h-4 w-4" />
-          Add New Medicine
-        </Button>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <Link href="/inventory/import">
+            <Button
+              variant="outline"
+              className="gap-2 border-teal-500/40 text-teal-300 hover:bg-teal-500/10 font-semibold"
+            >
+              <Sparkles className="h-4 w-4 text-teal-400" />
+              Import Medicine List (OCR)
+            </Button>
+          </Link>
+          <Button
+            onClick={() => setShowAddMedicine(true)}
+            className="gap-2 bg-teal-600 hover:bg-teal-700 text-white font-semibold"
+          >
+            <Plus className="h-4 w-4" />
+            Add New Medicine
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
