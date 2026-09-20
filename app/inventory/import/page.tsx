@@ -31,7 +31,7 @@ export default function MedicineImportPage() {
 }
 
 function MedicineImportContent() {
-  const { inventory, catalog, addCatalogItem, updateMedicine, currentUser, addLog } = useStore();
+  const { inventory, catalog, addCatalogItem, updateMedicine, currentUser } = useStore();
 
   // Workflow steps: upload -> preview -> processing -> review -> approval -> summary
   const [step, setStep] = useState<ImportStep>("upload");
@@ -345,11 +345,6 @@ function MedicineImportContent() {
     };
 
     setImportHistory((prev) => [histRecord, ...prev]);
-
-    addLog(
-      "MEDICINE_IMPORT",
-      `Medicine List OCR Import completed: Added ${addedCount}, Updated ${updatedCount}, Skipped ${skippedCount}, Failed ${failedCount}`
-    );
 
     setSummaryData({
       added: addedCount,

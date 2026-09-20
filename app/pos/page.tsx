@@ -87,7 +87,8 @@ export default function PosPage() {
     ? subtotal * (store.activeDiscount.percent / 100) : 0;
   // Only vitamins are taxed (15%). All other categories are tax-free.
   const tax = store.cart.reduce((acc, item) => {
-    const taxRes = calculateTaxStatus(item.category, item.drugName);
+    const catItem = store.catalog.find(c => c.drugName.toLowerCase() === item.drugName.toLowerCase());
+    const taxRes = calculateTaxStatus(catItem?.category, item.drugName);
     return acc + (item.unitPrice * item.quantity * taxRes.taxRate);
   }, 0);
   const cartTotal = (subtotal - discountAmount) + tax;
