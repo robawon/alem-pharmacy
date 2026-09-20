@@ -61,8 +61,9 @@ export default function CashierNotificationsPage() {
     });
 
     const subtotal = itemDetails.reduce((sum: number, i: any) => sum + i.unitPrice * i.quantity, 0);
-    const tax = subtotal * 0.15;
-    const total = subtotal + tax;
+    // Online orders don't carry category data, so no vitamin tax applies
+    const tax = 0;
+    const total = subtotal;
 
     setLastCompletedOrder({
       id: order.id,
@@ -138,7 +139,7 @@ export default function CashierNotificationsPage() {
 
             <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900 p-3 text-sm text-slate-300">
               <div className="flex justify-between"><span>Subtotal</span><span>{currency(order.subtotal)}</span></div>
-              <div className="mt-2 flex justify-between"><span>Tax (15%)</span><span>{currency(order.tax)}</span></div>
+              {order.tax > 0 && <div className="mt-2 flex justify-between"><span>Vitamin Tax (15%)</span><span>{currency(order.tax)}</span></div>}
               <div className="mt-2 flex justify-between border-t border-slate-700 pt-2 font-semibold text-white"><span>Total</span><span>{currency(order.total)}</span></div>
             </div>
 

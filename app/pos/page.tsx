@@ -26,6 +26,7 @@ import {
 import { useStore } from "@/lib/store";
 import { currency, relativeTime } from "@/lib/utils";
 import { CustomerOrder } from "@/lib/types";
+import { calculateTaxStatus } from "@/lib/tax";
 import { ReceivedInPersonOrders } from "@/components/pos/ReceivedInPersonOrders";
 
 export default function PosPage() {
@@ -84,9 +85,12 @@ export default function PosPage() {
   );
   const discountAmount = store.activeDiscount
     ? subtotal * (store.activeDiscount.percent / 100) : 0;
-  const taxableAmount = subtotal - discountAmount;
-  const tax = taxableAmount * 0.08;
-  const cartTotal = taxableAmount + tax;
+  // Only vitamins are taxed (15%). All other categories are tax-free.
+  const tax = store.cart.reduce((acc, item) => {
+    const taxRes = calculateTaxStatus(item.category, item.drugName);
+    return acc + (item.unitPrice * item.quantity * taxRes.taxRate);
+  }, 0);
+  const cartTotal = (subtotal - discountAmount) + tax;
 
   // ─── Category filter ────────────────────────────────────────────
   const categories = [
@@ -539,7 +543,7 @@ export default function PosPage() {
                           <span>-{currency(discountAmount)}</span>
                         </div>
                       )}
-                      <div className="flex justify-between"><span className="text-muted">Tax (8%)</span><span>{currency(tax)}</span></div>
+                      {tax > 0 && <div className="flex justify-between"><span className="text-muted">Vitamin Tax (15%)</span><span>{currency(tax)}</span></div>}
                       <div className="flex justify-between border-t border-border pt-1.5 text-base font-semibold">
                         <span>Total</span><span>{currency(cartTotal)}</span>
                       </div>

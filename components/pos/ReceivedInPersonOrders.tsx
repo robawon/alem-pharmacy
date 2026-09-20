@@ -90,10 +90,12 @@ export function ReceivedInPersonOrders() {
               <span>Subtotal:</span>
               <span>{currency(subtotal)}</span>
             </div>
-            <div className="flex justify-between text-sm text-gray-600">
-              <span>Tax (15%):</span>
-              <span>{currency(tax)}</span>
-            </div>
+            {tax > 0 && (
+              <div className="flex justify-between text-sm text-gray-600">
+                <span>Vitamin Tax (15%):</span>
+                <span>{currency(tax)}</span>
+              </div>
+            )}
             <div className="border-t pt-2 flex justify-between font-bold">
               <span>Total:</span>
               <span className="text-green-600">{currency(total)}</span>
