@@ -208,10 +208,7 @@ export function ReceivedInPersonOrders() {
                 status={order.status}
                 isExpanded={expandedOrderId === order.id}
                 onToggle={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
-                onReceive={() => {
-                  receiveInPersonOrder(order.id);
-                  setExpandedOrderId(null);
-                }}
+                onReceive={() => handleOpenPaymentModal(order)}
                 onComplete={() => handleOpenPaymentModal(order)}
                 onCancel={() => handleCancelOrder(order.id)}
               />
