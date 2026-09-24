@@ -1118,7 +1118,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     orderId: string,
     paymentDetails?: { paymentMethod: "cash" | "card" | "mobile" | "other"; amountTendered?: number; changeDue?: number }
   ): Promise<boolean> => {
-    const supabase = createClient();
     const order = inPersonOrders.find(o => o.id === orderId);
     const now = new Date().toISOString();
 
@@ -1128,24 +1127,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
     let completedSaleId = newId("sale");
 
-    // Try RPC first
-    const { data, error } = await supabase.rpc(
-      "complete_pharmacy_order",
-      { p_order_id: orderId }
-    );
-
-    if (!error && data && data.success && data.sale_id) {
-      completedSaleId = data.sale_id;
-    } else {
-      console.warn("complete_pharmacy_order RPC not available or failed, executing direct update:", error?.message || data?.error);
-      // Fallback: update pharmacy_orders directly
-      const { error: updateErr } = await updatePharmacyOrderStatus(orderId, "completed", {
-        completedAt: now,
-        saleId: completedSaleId,
-      });
-      if (updateErr) {
-        console.error("Failed to update pharmacy_orders status:", updateErr);
-      }
+    // Skip the RPC — it inserts completed_sales without payment_method/amount_tendered/change_due.
+    // Always do a direct pharmacy_orders status update, then insert the full sale record below.
+    const { error: updateErr } = await updatePharmacyOrderStatus(orderId, "completed", {
+      completedAt: now,
+      saleId: completedSaleId,
+    });
+    if (updateErr) {
+      console.error("[completeInPersonOrder] Failed to update pharmacy_orders status:", updateErr);
     }
 
     // Update local inPersonOrders to status completed
@@ -1194,9 +1183,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         );
       });
 
-      // Insert into completed_sales table if not already inserted by RPC
-      if (error || !data?.success) {
-        insertCompletedSale(saleRecord).catch(err => console.error("Fallback insertCompletedSale failed:", err));
+      // Always insert into completed_sales with full payment details (method, tendered, change).
+      // If a duplicate-key error occurs (from a previous partial attempt), ignore it.
+      try {
+        await insertCompletedSale(saleRecord);
+      } catch (err: any) {
+        const msg = String(err?.message || err);
+        if (!msg.includes("duplicate") && !msg.includes("23505")) {
+          console.error("[completeInPersonOrder] insertCompletedSale failed:", err);
+        }
       }
 
       // Update inventory quantities
