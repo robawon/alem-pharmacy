@@ -232,8 +232,9 @@ export default function PosPage() {
   function handleCancelSale() {
     store.cancelSale();
     setSelectedReadyOrder(null);
-    setPaymentMethod("cash");
+    setPaymentMethod("");
     setAmountTendered("");
+    setCheckoutError(null);
   }
   function handleImportRx() {
     setRxError("");
@@ -647,19 +648,33 @@ export default function PosPage() {
                         </div>
                       )}
 
-                      {checkoutError && (
-                        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2.5 text-xs font-semibold text-destructive flex items-center gap-2">
-                          <XCircle className="h-4 w-4 shrink-0" />
-                          <span>{checkoutError}</span>
-                        </div>
-                      )}
                     </div>
                   </>
                 )}
 
-                <Button className="mt-2 w-full gap-2" disabled={store.cart.length === 0} onClick={handleCompleteSale}>
+                {/* Checkout error — always visible outside the cart conditional */}
+                {checkoutError && store.cart.length > 0 && (
+                  <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2.5 text-xs font-semibold text-destructive flex items-center gap-2 mt-1">
+                    <XCircle className="h-4 w-4 shrink-0" />
+                    <span>{checkoutError}</span>
+                  </div>
+                )}
+
+                <Button
+                  className="mt-2 w-full gap-2"
+                  disabled={
+                    store.cart.length === 0 ||
+                    !paymentMethod ||
+                    (paymentMethod === "cash" && (isNaN(parseFloat(amountTendered)) || parseFloat(amountTendered) < cartTotal))
+                  }
+                  onClick={handleCompleteSale}
+                >
                   <Printer className="h-4 w-4" />
-                  {selectedReadyOrder ? `Complete & Mark Order Done` : "Complete Sale & Print"}
+                  {!paymentMethod
+                    ? "Select a Payment Method"
+                    : selectedReadyOrder
+                    ? "Complete & Mark Order Done"
+                    : "Complete Sale & Print"}
                 </Button>
               </CardContent>
             </Card>

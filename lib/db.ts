@@ -83,12 +83,12 @@ function toCustomerOrder(r: any): CustomerOrder {
   const contactInfo: CustomerContactInfo | undefined =
     r.contact_phone
       ? {
-          fullName: r.contact_full_name ?? "",
-          phone: r.contact_phone ?? "",
-          email: r.contact_email ?? "",
-          address: r.contact_address ?? "",
-          notes: r.contact_notes ?? "",
-        }
+        fullName: r.contact_full_name ?? "",
+        phone: r.contact_phone ?? "",
+        email: r.contact_email ?? "",
+        address: r.contact_address ?? "",
+        notes: r.contact_notes ?? "",
+      }
       : undefined;
   return {
     id: r.id, patientName: r.patient_name, items: r.items ?? [],
