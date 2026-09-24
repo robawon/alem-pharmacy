@@ -103,16 +103,18 @@ function toSaleRecord(r: any): SaleRecord {
   const pharmacistName =
     r.pharmacist?.full_name ||
     r.pharmacist?.name ||
+    r.salesperson?.full_name ||
+    r.salesperson?.name ||
     r.staff_profiles?.full_name ||
     r.staff_profiles?.name ||
     r.pharmacist_name ||
     undefined;
 
   const cashierName =
-    r.cashier_staff?.full_name ||
-    r.cashier_staff?.name ||
     r.cashier?.full_name ||
     r.cashier?.name ||
+    r.cashier_staff?.full_name ||
+    r.cashier_staff?.name ||
     r.cashier_name ||
     undefined;
 
@@ -357,12 +359,24 @@ export async function claimPharmacyOrder(orderId: string, saleId: string): Promi
 export async function fetchCompletedSales(): Promise<SaleRecord[]> {
   const { data, error } = await supabase
     .from("completed_sales")
-    .select("*")
+    .select(`
+      *,
+      cashier:staff_profiles!completed_sales_cashier_id_fkey(id, name),
+      pharmacist:staff_profiles!completed_sales_salesperson_id_fkey(id, name)
+    `)
     .order("timestamp", { ascending: false });
 
   if (error) {
-    console.error("fetchCompletedSales:", error.message);
-    return [];
+    const { data: fallbackData, error: fallbackErr } = await supabase
+      .from("completed_sales")
+      .select("*")
+      .order("timestamp", { ascending: false });
+
+    if (fallbackErr) {
+      console.error("fetchCompletedSales fallback:", fallbackErr.message);
+      return [];
+    }
+    return (fallbackData ?? []).map(toSaleRecord);
   }
 
   return (data ?? []).map(toSaleRecord);
@@ -646,9 +660,22 @@ export async function updateCustomerOrderStatus(id: string, status: string) {
 }
 
 export async function insertCompletedSale(sale: SaleRecord) {
+  let authUserId: string | null = null;
+  try {
+    const { data: authData } = await supabase.auth.getUser();
+    if (authData?.user?.id) {
+      authUserId = authData.user.id;
+    }
+  } catch (err) {
+    console.warn("supabase.auth.getUser call in insertCompletedSale:", err);
+  }
+
   const validPaymentMethod = ["cash", "card", "mobile", "other"].includes(sale.paymentMethod)
     ? sale.paymentMethod
     : "cash";
+
+  const cashierId = sale.cashierId || authUserId || "u_cash1";
+  const salespersonId = sale.salespersonId || authUserId || cashierId;
 
   const payload = {
     id: sale.id,
@@ -662,8 +689,8 @@ export async function insertCompletedSale(sale: SaleRecord) {
     amount_tendered: Number(sale.amountTendered) || 0,
     change_due: Number(sale.changeDue) || 0,
     timestamp: sale.timestamp || new Date().toISOString(),
-    salesperson_id: sale.salespersonId || null,
-    cashier_id: sale.cashierId || null,
+    salesperson_id: salespersonId,
+    cashier_id: cashierId,
   };
 
   const { data, error } = await supabase

@@ -551,10 +551,21 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [addLog]);
 
   const completeSale = useCallback(async (sale: Omit<SaleRecord, "id" | "timestamp">): Promise<boolean> => {
-    const cId = sale.cashierId || currentUser?.id;
-    const cName = sale.cashierName || staffProfiles.find(s => s.id === cId)?.name || currentUser?.name;
-    const sId = sale.salespersonId || (currentUser?.role === "pharmacist" ? currentUser?.id : undefined);
-    const pName = sale.pharmacistName || (sId ? staffProfiles.find(s => s.id === sId)?.name : undefined);
+    const supabase = createClient();
+    let authUserId: string | undefined = undefined;
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      if (authData?.user?.id) {
+        authUserId = authData.user.id;
+      }
+    } catch (e) {
+      console.warn("completeSale auth.getUser error:", e);
+    }
+
+    const cId = sale.cashierId || authUserId || currentUser?.id || "u_cash1";
+    const cName = sale.cashierName || staffProfiles.find(s => s.id === cId)?.name || currentUser?.name || "Yonas Girma";
+    const sId = sale.salespersonId || (currentUser?.role === "pharmacist" ? (currentUser?.id || authUserId) : undefined) || cId;
+    const pName = sale.pharmacistName || (sId ? staffProfiles.find(s => s.id === sId)?.name : undefined) || cName;
     const record: SaleRecord = {
       ...sale,
       id: newId("sale"),

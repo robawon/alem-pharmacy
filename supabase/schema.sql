@@ -137,6 +137,10 @@ alter table public.completed_sales add column if not exists salesperson_id text;
 alter table public.completed_sales add column if not exists cashier_id text;
 alter table public.completed_sales drop constraint if exists completed_sales_payment_method_check;
 alter table public.completed_sales add constraint completed_sales_payment_method_check check (payment_method in ('cash', 'card', 'mobile', 'other'));
+alter table public.completed_sales drop constraint if exists completed_sales_cashier_id_fkey;
+alter table public.completed_sales drop constraint if exists completed_sales_salesperson_id_fkey;
+alter table public.completed_sales add constraint completed_sales_cashier_id_fkey foreign key (cashier_id) references public.staff_profiles(id) on delete set null;
+alter table public.completed_sales add constraint completed_sales_salesperson_id_fkey foreign key (salesperson_id) references public.staff_profiles(id) on delete set null;
 alter table public.completed_sales enable row level security;
 create policy "Allow all for authenticated" on public.completed_sales for all using (true);
 -- ── Uploaded Prescriptions (Customer Portal) ─────────────────
