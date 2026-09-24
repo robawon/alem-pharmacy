@@ -31,6 +31,7 @@ import {
 } from "recharts";
 import { AppShell } from "@/components/layout/AppShell";
 import { AuditLogPanel } from "@/components/audit/AuditLogPanel";
+import { StockTable } from "@/components/inventory/StockTable";
 import { AddMedicineDialog } from "@/components/ui/AddMedicineDialog";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { Badge } from "@/components/ui/badge";
@@ -201,6 +202,10 @@ function AdminDashboardContent() {
         .filter((sale) => isDateIn7DayWindow(new Date(sale.timestamp), days))
         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
         .map((sale) => {
+          const medicineNames = Array.isArray(sale.items) && sale.items.length > 0
+            ? sale.items.map((item: any) => item.drugName || item.name || item.drug_name || "Unknown Item").join(", ")
+            : "N/A";
+
           const pharmacistName = sale.pharmacistName ||
             (sale.salespersonId ? staffProfiles.find((s) => s.id === sale.salespersonId)?.name : undefined) ||
             "N/A";
@@ -210,11 +215,12 @@ function AdminDashboardContent() {
 
           return {
             id: sale.id,
+            medicineName: medicineNames,
             pharmacist: pharmacistName,
             cashier: cashierName,
             time: new Date(sale.timestamp).toLocaleString([], { dateStyle: "short", timeStyle: "short" }),
             amount: Number(sale.total),
-            paymentMethod: sale.paymentMethod,
+            paymentMethod: sale.paymentMethod || "N/A",
           };
         });
     },
@@ -333,49 +339,74 @@ function AdminDashboardContent() {
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle>Recent Transactions</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <div>
+              <CardTitle>Recent Transactions</CardTitle>
+              <p className="text-xs text-muted mt-0.5">Showing last 7 days of completed sales (Scroll to view all)</p>
+            </div>
+            <Badge variant="default" className="text-[10px] font-mono">
+              {recentTransactions.length} Total
+            </Badge>
           </CardHeader>
           <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Transaction ID</TableHead>
-                  <TableHead>Pharmacist</TableHead>
-                  <TableHead>Time</TableHead>
-                  <TableHead>Cashier</TableHead>
-                  <TableHead>Payment</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                  <TableHead className="text-right">Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {recentTransactions.length === 0 ? (
+            <div className="max-h-[460px] overflow-y-auto relative">
+              <Table>
+                <TableHeader className="sticky top-0 bg-slate-900 z-10 shadow-sm">
                   <TableRow>
-                    <TableCell colSpan={7} className="py-8 text-center text-sm text-muted">
-                      No transactions in the last 7 days.
-                    </TableCell>
+                    <TableHead>Medicine Name</TableHead>
+                    <TableHead>Cashier</TableHead>
+                    <TableHead>Pharmacist</TableHead>
+                    <TableHead>Date / Time</TableHead>
+                    <TableHead>Payment Method</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                    <TableHead className="text-right">Status</TableHead>
                   </TableRow>
-                ) : (
-                  recentTransactions.map((tx) => (
-                    <TableRow key={tx.id}>
-                      <TableCell className="font-mono text-xs">{tx.id}</TableCell>
-                      <TableCell className="font-medium text-slate-200">{tx.pharmacist}</TableCell>
-                      <TableCell>{tx.time}</TableCell>
-                      <TableCell className="font-medium text-slate-200">{tx.cashier}</TableCell>
-                      <TableCell className="capitalize">{tx.paymentMethod}</TableCell>
-                      <TableCell className="text-right font-medium">{currency(tx.amount)}</TableCell>
-                      <TableCell className="text-right">
-                        <Badge variant="success">Approved</Badge>
+                </TableHeader>
+                <TableBody>
+                  {recentTransactions.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="py-8 text-center text-sm text-muted">
+                        No transactions in the last 7 days.
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
+                  ) : (
+                    recentTransactions.map((tx) => (
+                      <TableRow key={tx.id} className="hover:bg-slate-800/50 transition-colors">
+                        <TableCell className="font-medium text-slate-100 max-w-[200px] truncate" title={tx.medicineName}>
+                          {tx.medicineName}
+                        </TableCell>
+                        <TableCell className="font-medium text-teal-300">{tx.cashier}</TableCell>
+                        <TableCell className="font-medium text-purple-300">{tx.pharmacist}</TableCell>
+                        <TableCell className="text-xs text-slate-400">{tx.time}</TableCell>
+                        <TableCell className="capitalize text-xs font-semibold text-amber-300">{tx.paymentMethod}</TableCell>
+                        <TableCell className="text-right font-bold text-slate-100">{currency(tx.amount)}</TableCell>
+                        <TableCell className="text-right">
+                          <Badge variant="success">Completed</Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <div>
+            <CardTitle>Batch Inventory</CardTitle>
+            <p className="text-xs text-muted mt-0.5">Live stock catalog (Scroll to access all inventory batches)</p>
+          </div>
+          <Badge variant="default" className="text-[10px] font-mono">
+            {inventory.length} Batches
+          </Badge>
+        </CardHeader>
+        <CardContent>
+          <StockTable />
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 gap-6">
         <AuditLogPanel logs={auditLogs} title="Recent Verification & Clinical Activity" limit={25} />

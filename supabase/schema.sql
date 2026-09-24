@@ -126,11 +126,17 @@ create table if not exists public.completed_sales (
   discount_amount numeric(10, 2) not null default 0,
   tax numeric(10, 2) not null default 0,
   total numeric(10, 2) not null,
-  payment_method text not null check (payment_method in ('cash', 'card', 'mobile')),
+  payment_method text not null check (payment_method in ('cash', 'card', 'mobile', 'other')),
   amount_tendered numeric(10, 2) not null,
   change_due numeric(10, 2) not null default 0,
+  salesperson_id text,
+  cashier_id text,
   timestamp timestamptz not null default now()
 );
+alter table public.completed_sales add column if not exists salesperson_id text;
+alter table public.completed_sales add column if not exists cashier_id text;
+alter table public.completed_sales drop constraint if exists completed_sales_payment_method_check;
+alter table public.completed_sales add constraint completed_sales_payment_method_check check (payment_method in ('cash', 'card', 'mobile', 'other'));
 alter table public.completed_sales enable row level security;
 create policy "Allow all for authenticated" on public.completed_sales for all using (true);
 -- ── Uploaded Prescriptions (Customer Portal) ─────────────────

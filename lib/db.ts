@@ -646,7 +646,7 @@ export async function updateCustomerOrderStatus(id: string, status: string) {
 }
 
 export async function insertCompletedSale(sale: SaleRecord) {
-  const validPaymentMethod = ["cash", "card", "mobile"].includes(sale.paymentMethod)
+  const validPaymentMethod = ["cash", "card", "mobile", "other"].includes(sale.paymentMethod)
     ? sale.paymentMethod
     : "cash";
 
@@ -662,6 +662,8 @@ export async function insertCompletedSale(sale: SaleRecord) {
     amount_tendered: Number(sale.amountTendered) || 0,
     change_due: Number(sale.changeDue) || 0,
     timestamp: sale.timestamp || new Date().toISOString(),
+    salesperson_id: sale.salespersonId || null,
+    cashier_id: sale.cashierId || null,
   };
 
   const { data, error } = await supabase

@@ -113,7 +113,7 @@ export interface SaleRecord {
   discountAmount: number;
   tax: number;
   total: number;
-  paymentMethod: "cash" | "card" | "mobile";
+  paymentMethod: "cash" | "card" | "mobile" | "other";
   amountTendered: number;
   changeDue: number;
   timestamp: string;

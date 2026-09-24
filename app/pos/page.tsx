@@ -44,8 +44,9 @@ export default function PosPage() {
   const [resumeSheetOpen, setResumeSheetOpen] = useState(false);
   const [closeShiftDialogOpen, setCloseShiftDialogOpen] = useState(false);
   const [closingCashInput, setClosingCashInput] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "mobile">("cash");
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "mobile" | "other" | "">("");
   const [amountTendered, setAmountTendered] = useState("");
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
   const [lastSale, setLastSale] = useState<{ total: number; method: string; change: number; orderId?: string } | null>(null);
   const [rxError, setRxError] = useState("");
@@ -158,8 +159,23 @@ export default function PosPage() {
 
   // ─── Complete sale tied to a ready order ────────────────────────
   async function handleCompleteSale() {
+    setCheckoutError(null);
     if (store.cart.length === 0) return;
-    const tendered = paymentMethod === "cash" ? parseFloat(amountTendered) || 0 : cartTotal;
+
+    if (!paymentMethod) {
+      setCheckoutError("Please select a payment method before completing the checkout.");
+      return;
+    }
+
+    if (paymentMethod === "cash") {
+      const tenderedVal = parseFloat(amountTendered);
+      if (isNaN(tenderedVal) || tenderedVal < cartTotal) {
+        setCheckoutError("Amount tendered is insufficient.");
+        return;
+      }
+    }
+
+    const tendered = paymentMethod === "cash" ? parseFloat(amountTendered) : cartTotal;
     const change = paymentMethod === "cash" ? Math.max(0, tendered - cartTotal) : 0;
     const itemsCopy = [...store.cart];
     const completed = await store.completeSale({
@@ -172,6 +188,8 @@ export default function PosPage() {
       paymentMethod,
       amountTendered: tendered,
       changeDue: change,
+      cashierId: store.currentUser?.id,
+      cashierName: store.currentUser?.name,
     });
     if (!completed) return;
 
@@ -192,7 +210,8 @@ export default function PosPage() {
     setSelectedReadyOrder(null);
     setReceiptModalOpen(true);
     setAmountTendered("");
-    setPaymentMethod("cash");
+    setPaymentMethod("");
+    setCheckoutError(null);
   }
 
   // ─── Other handlers (unchanged) ─────────────────────────────────
@@ -566,32 +585,72 @@ export default function PosPage() {
                     </div>
 
                     <div className="space-y-3 border-t border-border pt-3">
-                      <div className="flex gap-1 rounded-lg border border-border bg-surface-container p-1">
-                        {(["cash", "card", "mobile"] as const).map((method) => (
-                          <button
-                            key={method}
-                            className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${paymentMethod === method ? "bg-primary text-on-primary shadow-sm" : "text-muted hover:text-foreground"}`}
-                            onClick={() => setPaymentMethod(method)}
-                          >
-                            {method === "cash" && <Banknote className="h-3.5 w-3.5" />}
-                            {method === "card" && <CreditCard className="h-3.5 w-3.5" />}
-                            {method === "mobile" && <Smartphone className="h-3.5 w-3.5" />}
-                            {method === "cash" ? "Cash" : method === "card" ? "Card" : "Mobile"}
-                          </button>
-                        ))}
+                      <label className="text-xs font-semibold text-muted block">Payment Method *</label>
+                      <div className="grid grid-cols-3 gap-1.5 rounded-lg border border-border bg-surface-container p-1">
+                        {[
+                          { id: "cash", label: "Cash", icon: Banknote },
+                          { id: "mobile", label: "Mobile Banking", icon: Smartphone },
+                          { id: "other", label: "Other", icon: CreditCard },
+                        ].map((item) => {
+                          const Icon = item.icon;
+                          const isSelected = paymentMethod === item.id;
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              className={`flex items-center justify-center gap-1.5 rounded-md px-2 py-2 text-xs font-medium transition-colors ${
+                                isSelected
+                                  ? "bg-primary text-on-primary shadow-sm font-bold"
+                                  : "text-muted hover:text-foreground hover:bg-surface-container-high"
+                              }`}
+                              onClick={() => {
+                                setPaymentMethod(item.id as any);
+                                setCheckoutError(null);
+                              }}
+                            >
+                              <Icon className="h-3.5 w-3.5" />
+                              <span className="truncate">{item.label}</span>
+                            </button>
+                          );
+                        })}
                       </div>
+
                       {paymentMethod === "cash" && (
-                        <div className="space-y-2">
+                        <div className="space-y-2 rounded-lg border border-border bg-surface-container/50 p-2.5">
                           <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted w-28">Amount Tendered</span>
-                            <Input type="number" step="0.01" min="0" placeholder="0.00" className="h-8 flex-1" value={amountTendered} onChange={(e) => setAmountTendered(e.target.value)} />
+                            <span className="text-xs text-muted w-28 font-medium">Amount Tendered</span>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              placeholder="0.00"
+                              className="h-8 flex-1 font-mono font-semibold"
+                              value={amountTendered}
+                              onChange={(e) => {
+                                setAmountTendered(e.target.value);
+                                setCheckoutError(null);
+                              }}
+                            />
                           </div>
-                          {parseFloat(amountTendered) >= cartTotal && (
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-muted w-28">Change Due</span>
-                              <span className="text-base font-bold text-success">{currency(parseFloat(amountTendered) - cartTotal)}</span>
+                          {parseFloat(amountTendered) >= cartTotal ? (
+                            <div className="flex items-center justify-between pt-1 border-t border-border/50">
+                              <span className="text-xs text-muted font-medium">Change Due</span>
+                              <span className="text-base font-extrabold text-emerald-400 font-mono">
+                                {currency(parseFloat(amountTendered) - cartTotal)}
+                              </span>
                             </div>
-                          )}
+                          ) : amountTendered !== "" ? (
+                            <div className="text-xs text-destructive font-medium pt-1">
+                              Amount tendered is insufficient.
+                            </div>
+                          ) : null}
+                        </div>
+                      )}
+
+                      {checkoutError && (
+                        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2.5 text-xs font-semibold text-destructive flex items-center gap-2">
+                          <XCircle className="h-4 w-4 shrink-0" />
+                          <span>{checkoutError}</span>
                         </div>
                       )}
                     </div>

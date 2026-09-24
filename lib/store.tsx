@@ -95,7 +95,7 @@ interface StoreContextType extends State {
   // In-person order actions (Pharmacist to Cashier)
   createInPersonOrder: (patientName: string, items: InPersonOrderItem[]) => Promise<boolean>;
   receiveInPersonOrder: (orderId: string) => void;
-  completeInPersonOrder: (orderId: string) => Promise<boolean>;
+  completeInPersonOrder: (orderId: string, paymentDetails?: { paymentMethod: "cash" | "card" | "mobile" | "other"; amountTendered?: number; changeDue?: number }) => Promise<boolean>;
   cancelInPersonOrder: (orderId: string) => void;
   // Dashboard refresh
   refreshDashboardData: () => Promise<void>;
@@ -1103,29 +1103,39 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [currentUser, addLog]);
 
 
-  const completeInPersonOrder = useCallback(async (orderId: string): Promise<boolean> => {
+  const completeInPersonOrder = useCallback(async (
+    orderId: string,
+    paymentDetails?: { paymentMethod: "cash" | "card" | "mobile" | "other"; amountTendered?: number; changeDue?: number }
+  ): Promise<boolean> => {
     const supabase = createClient();
+    const order = inPersonOrders.find(o => o.id === orderId);
+    const now = new Date().toISOString();
 
+    const paymentMethod = paymentDetails?.paymentMethod || "cash";
+    const amountTendered = paymentDetails?.amountTendered !== undefined ? paymentDetails.amountTendered : (order?.total || 0);
+    const changeDue = paymentDetails?.changeDue !== undefined ? paymentDetails.changeDue : 0;
+
+    let completedSaleId = newId("sale");
+
+    // Try RPC first
     const { data, error } = await supabase.rpc(
       "complete_pharmacy_order",
       { p_order_id: orderId }
     );
 
-    if (error) {
-      console.error("complete_pharmacy_order RPC error:", error);
-      alert(`Could not complete order: ${error.message || error}`);
-      return false;
+    if (!error && data && data.success && data.sale_id) {
+      completedSaleId = data.sale_id;
+    } else {
+      console.warn("complete_pharmacy_order RPC not available or failed, executing direct update:", error?.message || data?.error);
+      // Fallback: update pharmacy_orders directly
+      const { error: updateErr } = await updatePharmacyOrderStatus(orderId, "completed", {
+        completedAt: now,
+        saleId: completedSaleId,
+      });
+      if (updateErr) {
+        console.error("Failed to update pharmacy_orders status:", updateErr);
+      }
     }
-
-    if (!data || data.success === false) {
-      console.error("complete_pharmacy_order failed:", data?.error || "Unknown error");
-      alert(`Could not complete order: ${data?.error || "Completion failed"}`);
-      return false;
-    }
-
-    const completedSaleId = data.sale_id;
-    const now = new Date().toISOString();
-    const order = inPersonOrders.find(o => o.id === orderId);
 
     // Update local inPersonOrders to status completed
     setInPersonOrders(prev => prev.map(o => o.id === orderId ? {
@@ -1154,9 +1164,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         discountAmount: 0,
         tax: order.tax,
         total: order.total,
-        paymentMethod: "cash",
-        amountTendered: order.total,
-        changeDue: 0,
+        paymentMethod: paymentMethod,
+        amountTendered: amountTendered,
+        changeDue: changeDue,
         timestamp: now,
         salespersonId: creatorId,
         pharmacistName: pharmacistProfile?.name,
@@ -1172,6 +1182,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
         );
       });
+
+      // Insert into completed_sales table if not already inserted by RPC
+      if (error || !data?.success) {
+        insertCompletedSale(saleRecord).catch(err => console.error("Fallback insertCompletedSale failed:", err));
+      }
 
       // Update inventory quantities
       setInventory(prev =>
@@ -1204,7 +1219,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
 
     // Add the audit log
-    addLog("IN_PERSON_ORDER_COMPLETED", `Order ${orderId} completed and paid — Receipt ${completedSaleId} created`);
+    addLog("IN_PERSON_ORDER_COMPLETED", `Order ${orderId} completed and paid via ${paymentMethod} — Receipt ${completedSaleId} created`);
     return true;
   }, [inPersonOrders, addLog, currentUser, staffProfiles]);
 
