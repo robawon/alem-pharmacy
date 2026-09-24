@@ -53,6 +53,9 @@ export default function PosPage() {
   const [selectedReadyOrder, setSelectedReadyOrder] = useState<CustomerOrder | null>(null);
   const [ordersSheetOpen, setOrdersSheetOpen] = useState(false);
   const [showInPersonOrders, setShowInPersonOrders] = useState(false);
+  const [approvedOrderPaymentMethods, setApprovedOrderPaymentMethods] = useState<Record<string, "cash" | "mobile" | "other" | "">>({});
+  const [approvedOrderAmountsTendered, setApprovedOrderAmountsTendered] = useState<Record<string, string>>({});
+  const [approvedOrderErrors, setApprovedOrderErrors] = useState<Record<string, string | null>>({});
 
   useEffect(() => {
     if (store.inPersonOrders.some((order) => order.status === "pending_cashier" || order.status === "ready_for_checkout")) {
@@ -698,51 +701,162 @@ export default function PosPage() {
             {readyOrders.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted">No approved orders waiting.</p>
             ) : (
-              readyOrders.map((order) => (
-                <div key={order.id} className="rounded-xl border border-teal-500/25 bg-teal-500/5 p-4 flex flex-col gap-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <User className="h-3.5 w-3.5 text-teal-400" />
-                        <p className="text-sm font-semibold text-foreground">{order.patientName}</p>
-                        {order.isRx && <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/30 text-[10px] py-0">Rx</Badge>}
+              readyOrders.map((order) => {
+                const orderId = order.id;
+                const currentMethod = approvedOrderPaymentMethods[orderId] || "";
+                const currentTendered = approvedOrderAmountsTendered[orderId] || "";
+                const errorMsg = approvedOrderErrors[orderId];
+
+                // Calculate order total
+                const orderSubtotal = order.items.reduce((acc: number, itemName: string) => {
+                  const batch = store.inventory.find(
+                    (b) => b.drugName.toLowerCase() === itemName.toLowerCase() && b.quantity > 0 && !b.quarantined
+                  );
+                  return acc + (batch ? batch.unitPrice : 0);
+                }, 0);
+
+                return (
+                  <div key={order.id} className="rounded-xl border border-teal-500/25 bg-teal-500/5 p-4 flex flex-col gap-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <User className="h-3.5 w-3.5 text-teal-400" />
+                          <p className="text-sm font-semibold text-foreground">{order.patientName}</p>
+                          {order.isRx && <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/30 text-[10px] py-0">Rx</Badge>}
+                        </div>
+                        <p className="text-xs text-muted mt-0.5">{order.items.join(", ")}</p>
                       </div>
-                      <p className="text-xs text-muted mt-0.5">{order.items.join(", ")}</p>
+                      <span className="text-[10px] text-muted shrink-0">{relativeTime(order.createdAt)}</span>
                     </div>
-                    <span className="text-[10px] text-muted shrink-0">{relativeTime(order.createdAt)}</span>
+
+                    {order.contactInfo && (
+                      <div className="grid grid-cols-2 gap-1.5 text-xs">
+                        {order.contactInfo.phone && (
+                          <div className="flex items-center gap-1.5 text-muted">
+                            <Phone className="h-3 w-3 text-teal-400" />
+                            <span>{order.contactInfo.phone}</span>
+                          </div>
+                        )}
+                        {order.contactInfo.email && (
+                          <div className="flex items-center gap-1.5 text-muted">
+                            <Mail className="h-3 w-3 text-teal-400" />
+                            <span className="truncate">{order.contactInfo.email}</span>
+                          </div>
+                        )}
+                        {order.contactInfo.address && (
+                          <div className="flex items-center gap-1.5 text-muted col-span-2">
+                            <MapPin className="h-3 w-3 text-teal-400" />
+                            <span>{order.contactInfo.address}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Mandatory Payment Method Selection on Card */}
+                    <div className="rounded-lg border border-teal-500/30 bg-slate-900/60 p-3 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-teal-300">
+                          Select Payment Method <span className="text-rose-400">*</span>
+                        </label>
+                        {!currentMethod && (
+                          <span className="text-[10px] text-amber-300 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/30 font-semibold">
+                            Required
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {[
+                          { id: "cash", label: "Cash" },
+                          { id: "mobile", label: "Mobile" },
+                          { id: "other", label: "Other" },
+                        ].map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            className={`rounded-md border px-2 py-1.5 text-xs font-medium transition-all ${
+                              currentMethod === item.id
+                                ? "border-teal-400 bg-teal-500/20 text-teal-300 font-bold"
+                                : "border-border bg-slate-800 text-muted hover:text-foreground"
+                            }`}
+                            onClick={() => {
+                              setApprovedOrderPaymentMethods((prev) => ({ ...prev, [orderId]: item.id as any }));
+                              setApprovedOrderErrors((prev) => ({ ...prev, [orderId]: null }));
+                            }}
+                          >
+                            {item.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {currentMethod === "cash" && (
+                        <div className="space-y-1.5 pt-2 border-t border-border/50 text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className="text-muted w-24">Amount Tendered</span>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              placeholder="0.00"
+                              className="h-7 flex-1 font-mono text-xs"
+                              value={currentTendered}
+                              onChange={(e) => {
+                                setApprovedOrderAmountsTendered((prev) => ({ ...prev, [orderId]: e.target.value }));
+                                setApprovedOrderErrors((prev) => ({ ...prev, [orderId]: null }));
+                              }}
+                            />
+                          </div>
+                          {orderSubtotal > 0 && parseFloat(currentTendered) >= orderSubtotal && (
+                            <div className="flex justify-between text-xs text-teal-300 font-semibold">
+                              <span>Est. Change:</span>
+                              <span className="font-mono">{currency(parseFloat(currentTendered) - orderSubtotal)}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {errorMsg && (
+                        <p className="text-[11px] text-rose-400 font-medium bg-rose-500/10 border border-rose-500/30 p-2 rounded">
+                          {errorMsg}
+                        </p>
+                      )}
+                    </div>
+
+                    <Button
+                      size="sm"
+                      className={`w-full gap-1.5 font-semibold text-white ${
+                        currentMethod ? "bg-teal-600 hover:bg-teal-700" : "bg-slate-700 text-slate-400 cursor-not-allowed"
+                      }`}
+                      onClick={() => {
+                        if (!currentMethod) {
+                          setApprovedOrderErrors((prev) => ({
+                            ...prev,
+                            [orderId]: "Please select a payment method before loading order.",
+                          }));
+                          return;
+                        }
+                        if (currentMethod === "cash") {
+                          const tenderedVal = parseFloat(currentTendered);
+                          if (isNaN(tenderedVal) || (orderSubtotal > 0 && tenderedVal < orderSubtotal)) {
+                            setApprovedOrderErrors((prev) => ({
+                              ...prev,
+                              [orderId]: "Amount tendered is insufficient.",
+                            }));
+                            return;
+                          }
+                        }
+                        // Pre-populate POS payment method and amount tendered
+                        setPaymentMethod(currentMethod as any);
+                        setAmountTendered(currentTendered);
+                        handleLoadOrderToRegister(order);
+                      }}
+                    >
+                      <ShoppingCart className="h-3.5 w-3.5" />
+                      Load to Register
+                    </Button>
                   </div>
-                  {order.contactInfo && (
-                    <div className="grid grid-cols-2 gap-1.5 text-xs">
-                      {order.contactInfo.phone && (
-                        <div className="flex items-center gap-1.5 text-muted">
-                          <Phone className="h-3 w-3 text-teal-400" />
-                          <span>{order.contactInfo.phone}</span>
-                        </div>
-                      )}
-                      {order.contactInfo.email && (
-                        <div className="flex items-center gap-1.5 text-muted">
-                          <Mail className="h-3 w-3 text-teal-400" />
-                          <span className="truncate">{order.contactInfo.email}</span>
-                        </div>
-                      )}
-                      {order.contactInfo.address && (
-                        <div className="flex items-center gap-1.5 text-muted col-span-2">
-                          <MapPin className="h-3 w-3 text-teal-400" />
-                          <span>{order.contactInfo.address}</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  <Button
-                    size="sm"
-                    className="w-full gap-1.5 bg-teal-600 hover:bg-teal-700 text-white"
-                    onClick={() => handleLoadOrderToRegister(order)}
-                  >
-                    <ShoppingCart className="h-3.5 w-3.5" />
-                    Load to Register
-                  </Button>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </SheetContent>
