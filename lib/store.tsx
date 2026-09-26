@@ -15,6 +15,7 @@ import {
   insertStaffProfile, updateStaffRole, updateStaffStatus, deleteStaffProfile, updateMedicineRecord,
   updateStaffProfile, restoreInventoryStock, restoreCatalogStock, deductInventoryStock, deductCatalogStock,
   updateCatalogItem, fetchPharmacyOrders, insertPharmacyOrder, updatePharmacyOrderStatus, getPharmacyOrderSaleId,
+  updateCustomerOrderViewed, updatePharmacyOrderViewed,
 } from "./db";
 
 import { calculateTaxStatus } from "./tax";
@@ -90,6 +91,8 @@ interface StoreContextType extends State {
   uploadCustomerPrescription: (upload: Omit<CustomerPrescriptionUpload, "id" | "status" | "uploadedAt">) => void;
   addCatalogItem: (item: Omit<CatalogItem, "id">) => void;
   updateCustomerOrderStatus: (orderId: string, status: string) => void;
+  markCustomerOrderAsViewed: (orderId: string) => void;
+  markInPersonOrderAsViewed: (orderId: string) => void;
   approveUploadedPrescription: (id: string, selectedCatalogId?: string) => void;
   rejectUploadedPrescription: (id: string, reason?: string) => void;
   // In-person order actions (Pharmacist to Cashier)
@@ -883,6 +886,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     addLog("ORDER_STATUS_UPDATED", `Order ${orderId} → ${status}`);
   }, [addLog]);
 
+  const markCustomerOrderAsViewed = useCallback((orderId: string) => {
+    setCustomerOrders(prev => prev.map(o => o.id === orderId ? { ...o, pharmacistViewed: true } : o));
+    updateCustomerOrderViewed(orderId, true).catch(console.error);
+  }, []);
+
+  const markInPersonOrderAsViewed = useCallback((orderId: string) => {
+    setInPersonOrders(prev => prev.map(o => o.id === orderId ? { ...o, pharmacistViewed: true } : o));
+    updatePharmacyOrderViewed(orderId, true).catch(console.error);
+  }, []);
+
   const uploadCustomerPrescription = useCallback(
     (upload: Omit<CustomerPrescriptionUpload, "id" | "status" | "uploadedAt">) => {
       const newUpload: CustomerPrescriptionUpload = {
@@ -1324,7 +1337,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     parkCart, resumeCart, applyDiscount, completeSale, cancelSale,
     importRxToCart, closeShift, addToCustomerCart, removeFromCustomerCart,
     updateCustomerCartQty, placeCustomerOrder, uploadCustomerPrescription,
-    addCatalogItem, updateCustomerOrderStatus, approveUploadedPrescription, rejectUploadedPrescription,
+    addCatalogItem, updateCustomerOrderStatus, markCustomerOrderAsViewed, markInPersonOrderAsViewed, approveUploadedPrescription, rejectUploadedPrescription,
     createInPersonOrder, receiveInPersonOrder, completeInPersonOrder, cancelInPersonOrder,
     refreshDashboardData,
   }), [
@@ -1337,9 +1350,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     parkCart, resumeCart, applyDiscount, completeSale, cancelSale,
     importRxToCart, closeShift, addToCustomerCart, removeFromCustomerCart,
     updateCustomerCartQty, placeCustomerOrder, uploadCustomerPrescription,
-    addCatalogItem, updateCustomerOrderStatus, approveUploadedPrescription, rejectUploadedPrescription,
+    addCatalogItem, updateCustomerOrderStatus, markCustomerOrderAsViewed, markInPersonOrderAsViewed, approveUploadedPrescription, rejectUploadedPrescription,
     createInPersonOrder, receiveInPersonOrder, completeInPersonOrder, cancelInPersonOrder,
     refreshDashboardData,
+    markCustomerOrderAsViewed, markInPersonOrderAsViewed,
   ]);
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

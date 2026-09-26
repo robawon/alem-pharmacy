@@ -41,3 +41,10 @@ export function isDateIn7DayWindow(saleDate: Date, days: CalendarDay[]): boolean
   const windowEnd = days[days.length - 1].end.getTime();
   return time >= windowStart && time < windowEnd;
 }
+
+export function isToday(dateInput?: string | Date | null): boolean {
+  if (!dateInput) return false;
+  const d = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+  if (isNaN(d.getTime())) return false;
+  return getLocalDateKey(d) === getLocalDateKey(new Date());
+}

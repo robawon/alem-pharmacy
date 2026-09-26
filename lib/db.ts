@@ -96,6 +96,7 @@ function toCustomerOrder(r: any): CustomerOrder {
     updatedAt: r.updated_at, pickupReady: r.pickup_ready ?? false,
     contactInfo, prescriptionFileName: r.prescription_file_name ?? undefined,
     prescriptionNotes: r.prescription_notes ?? undefined,
+    pharmacistViewed: r.pharmacist_viewed ?? r.viewed_by_pharmacist ?? false,
   };
 }
 
@@ -245,6 +246,7 @@ function toInPersonOrder(r: any): InPersonOrder {
     receivedAt: r.received_at ?? undefined,
     completedAt: r.completed_at ?? undefined,
     saleId: r.sale_id ?? undefined,
+    pharmacistViewed: r.pharmacist_viewed ?? r.viewed_by_pharmacist ?? false,
   };
 }
 
@@ -275,6 +277,7 @@ export async function insertPharmacyOrder(order: InPersonOrder): Promise<{ error
     status: order.status,        // 'pending_cashier' — valid in pharmacy_orders
     created_by: order.createdBy,
     created_at: order.createdAt,
+    pharmacist_viewed: order.pharmacistViewed ?? false,
   };
   const { error } = await supabase.from("pharmacy_orders").insert(payload);
   if (error) {
@@ -298,6 +301,7 @@ export async function updatePharmacyOrder(
     receivedAt: string | null;
     completedAt: string | null;
     saleId: string | null;
+    pharmacistViewed: boolean;
   }>
 ): Promise<{ error: string | null }> {
   const dbPatch: Record<string, any> = {};
@@ -306,10 +310,24 @@ export async function updatePharmacyOrder(
   if (patch.receivedAt !== undefined) dbPatch.received_at = patch.receivedAt;
   if (patch.completedAt !== undefined) dbPatch.completed_at = patch.completedAt;
   if (patch.saleId !== undefined) dbPatch.sale_id = patch.saleId;
+  if (patch.pharmacistViewed !== undefined) dbPatch.pharmacist_viewed = patch.pharmacistViewed;
 
   const { error } = await supabase.from("pharmacy_orders").update(dbPatch).eq("id", orderId);
   if (error) {
     console.error("updatePharmacyOrder:", error.message);
+    return { error: error.message };
+  }
+  return { error: null };
+}
+
+export async function updatePharmacyOrderViewed(orderId: string, viewed: boolean = true): Promise<{ error: string | null }> {
+  return updatePharmacyOrder(orderId, { pharmacistViewed: viewed });
+}
+
+export async function updateCustomerOrderViewed(orderId: string, viewed: boolean = true): Promise<{ error: string | null }> {
+  const { error } = await supabase.from("customer_orders").update({ pharmacist_viewed: viewed }).eq("id", orderId);
+  if (error) {
+    console.error("updateCustomerOrderViewed:", error.message);
     return { error: error.message };
   }
   return { error: null };

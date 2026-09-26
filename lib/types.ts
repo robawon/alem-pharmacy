@@ -98,6 +98,7 @@ export interface InPersonOrder {
   receivedAt?: string;
   completedAt?: string;
   saleId?: string;
+  pharmacistViewed?: boolean;
 }
 
 export interface DiscountInfo {
@@ -181,4 +182,6 @@ export interface CustomerOrder {
   contactInfo?: CustomerContactInfo;
   prescriptionFileName?: string;
   prescriptionNotes?: string;
+  pharmacistViewed?: boolean;
 }
+

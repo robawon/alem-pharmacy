@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { PrescriptionQueue } from "@/components/pharmacist/PrescriptionQueue";
 import { InPersonOrderDialog } from "@/components/pharmacist/InPersonOrderDialog";
@@ -15,9 +15,10 @@ import { CustomerPrescriptionUpload } from "@/lib/store";
 import {
   Package, Phone, Mail, MapPin, FileText, User, Plus,
   CheckCircle2, Clock, Loader2, PackageCheck, FileSearch, MessageSquare, Package2,
-  DollarSign, Pill, Bell, X, AlertTriangle, ShieldAlert,
+  DollarSign, Pill, Bell, X, AlertTriangle, ShieldAlert, Check,
 } from "lucide-react";
 import { currency, relativeTime } from "@/lib/utils";
+import { isToday } from "@/lib/date-range";
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   placed:            { label: "Order Placed",     color: "bg-blue-500/20 text-blue-300 border-blue-500/30" },
@@ -37,45 +38,92 @@ export default function PharmacistPage() {
 }
 
 function PharmacistContent() {
-  const { customerOrders, uploadedPrescriptions, updateCustomerOrderStatus, currentUser, inPersonOrders, cancelInPersonOrder, completedSales, inventory, prescriptions, dbReady } = useStore();
+  const {
+    customerOrders,
+    uploadedPrescriptions,
+    updateCustomerOrderStatus,
+    markCustomerOrderAsViewed,
+    markInPersonOrderAsViewed,
+    currentUser,
+    inPersonOrders,
+    cancelInPersonOrder,
+    completedSales,
+    inventory,
+    prescriptions,
+    dbReady,
+  } = useStore();
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
   const [inPersonOrderDialogOpen, setInPersonOrderDialogOpen] = useState(false);
   const [addMedicineDialogOpen, setAddMedicineDialogOpen] = useState(false);
   const [reviewingUpload, setReviewingUpload] = useState<CustomerPrescriptionUpload | null>(null);
   const [notifications, setNotifications] = useState<{ id: string; message: string; timestamp: string }[]>([]);
 
-  // Live sales cards — only the current pharmacist's own sales
-  const myOrderIds = inPersonOrders
-    .filter((o) => o.createdBy === currentUser?.id)
-    .map((o) => o.id);
+  // ── 1 & 2. Live Sales Cards (Today's pharmacist-specific statistics) ────────
+  // Filter sales and in-person orders completed TODAY by the currently logged-in pharmacist
+  const myTodayCompletedSales = useMemo(() => {
+    if (!currentUser?.id) return [];
+    return completedSales.filter(s => s.salespersonId === currentUser.id && isToday(s.timestamp));
+  }, [completedSales, currentUser]);
 
-  // In-person orders created by this pharmacist and completed
-  const myCompletedOrders = inPersonOrders.filter(
-    (o) => o.createdBy === currentUser?.id && o.status === "completed"
-  );
+  const myTodayCompletedOrders = useMemo(() => {
+    if (!currentUser?.id) return [];
+    return inPersonOrders.filter(
+      (o) => o.createdBy === currentUser.id && o.status === "completed" && isToday(o.completedAt || o.createdAt)
+    );
+  }, [inPersonOrders, currentUser]);
 
-  // Total meds sold by this pharmacist (sum of quantities in completed in-person orders)
-  const myUnitsSold = myCompletedOrders.reduce(
-    (sum, order) => sum + order.items.reduce((s, item) => s + item.quantity, 0),
-    0
-  );
+  // Total meds sold TODAY by this pharmacist (sum of quantities from completed sales/orders today)
+  const myUnitsSoldToday = useMemo(() => {
+    const recordedSaleIds = new Set(myTodayCompletedSales.map((s) => s.id));
+    const unitsFromSales = myTodayCompletedSales.reduce(
+      (sum, sale) => sum + sale.items.reduce((s, item) => s + item.quantity, 0),
+      0
+    );
+    const unitsFromUnlinkedOrders = myTodayCompletedOrders
+      .filter((o) => !o.saleId || !recordedSaleIds.has(o.saleId))
+      .reduce((sum, order) => sum + order.items.reduce((s, item) => s + item.quantity, 0), 0);
+    return unitsFromSales + unitsFromUnlinkedOrders;
+  }, [myTodayCompletedSales, myTodayCompletedOrders]);
 
-  // Total revenue made by this pharmacist
-  const myRevenue = myCompletedOrders.reduce((sum, o) => sum + o.total, 0);
+  // Total revenue made TODAY by this pharmacist
+  const myRevenueToday = useMemo(() => {
+    const recordedSaleIds = new Set(myTodayCompletedSales.map((s) => s.id));
+    const revenueFromSales = myTodayCompletedSales.reduce((sum, sale) => sum + sale.total, 0);
+    const revenueFromUnlinkedOrders = myTodayCompletedOrders
+      .filter((o) => !o.saleId || !recordedSaleIds.has(o.saleId))
+      .reduce((sum, order) => sum + order.total, 0);
+    return revenueFromSales + revenueFromUnlinkedOrders;
+  }, [myTodayCompletedSales, myTodayCompletedOrders]);
 
-  // All orders needing pharmacist action (not yet ready/completed/cancelled)
+  // Active customer orders needing pharmacist action (not yet ready/completed/cancelled)
   const pendingOrders = customerOrders.filter(
     (o) => o.status === "placed" || o.status === "pharmacist_review"
   );
   const preparingOrders = customerOrders.filter((o) => o.status === "preparing");
   const readyOrders = customerOrders.filter((o) => o.status === "ready");
-  const completedOrders = customerOrders.filter((o) => o.status === "completed");
+
+  // Completed or cancelled customer orders that have NOT yet been viewed/acknowledged by the pharmacist
+  const unviewedCompletedOrCancelledCustomerOrders = customerOrders.filter(
+    (o) => (o.status === "completed" || o.status === "cancelled") && !o.pharmacistViewed
+  );
+
+  // Active in-person orders created by current pharmacist (pending/ready orders stay; completed/cancelled hide after being viewed)
+  const myActiveInPersonOrders = inPersonOrders.filter((o) => {
+    if (o.createdBy !== currentUser?.id) return false;
+    if (o.status === "pending_cashier" || o.status === "ready_for_checkout") return true;
+    if (o.status === "completed" || o.status === "cancelled") return !o.pharmacistViewed;
+    return true;
+  });
+
   const order = customerOrders.find((o) => o.id === selectedOrder);
 
   // Notify when a customer order is completed (cashier finished the receipt)
-  const seenCompletedRef = useRef<Set<string>>(new Set(completedOrders.map((o) => o.id)));
+  const seenCompletedRef = useRef<Set<string>>(
+    new Set(customerOrders.filter((o) => o.status === "completed").map((o) => o.id))
+  );
   useEffect(() => {
-    const newlyCompleted = completedOrders.filter((o) => !seenCompletedRef.current.has(o.id));
+    const completedList = customerOrders.filter((o) => o.status === "completed");
+    const newlyCompleted = completedList.filter((o) => !seenCompletedRef.current.has(o.id));
     if (newlyCompleted.length > 0) {
       newlyCompleted.forEach((o) => seenCompletedRef.current.add(o.id));
       const newNotifs = newlyCompleted.map((o) => ({
@@ -85,10 +133,11 @@ function PharmacistContent() {
       }));
       setNotifications((prev) => [...newNotifs, ...prev]);
     }
-  }, [completedOrders]);
+  }, [customerOrders]);
 
   const dismissNotification = (id: string) => {
     setNotifications(prev => prev.filter(n => n.id !== id));
+    markCustomerOrderAsViewed(id);
   };
 
   return (
@@ -136,6 +185,7 @@ function PharmacistContent() {
               <button
                 onClick={() => dismissNotification(notif.id)}
                 className="text-muted hover:text-foreground"
+                title="Acknowledge notification"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -152,53 +202,64 @@ function PharmacistContent() {
             <CardTitle className="text-foreground">My In-Person Orders</CardTitle>
           </div>
           <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-emerald-500 text-slate-950 text-xs font-bold px-1.5">
-            {inPersonOrders.filter(o => o.createdBy === currentUser?.id).length}
+            {myActiveInPersonOrders.length}
           </span>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
-          {inPersonOrders.filter(o => o.createdBy === currentUser?.id).length === 0 ? (
-            <p className="text-sm text-muted text-center py-8">You haven&apos;t created any in-person orders yet.</p>
+          {myActiveInPersonOrders.length === 0 ? (
+            <p className="text-sm text-muted text-center py-8">No active in-person orders pending.</p>
           ) : (
-            inPersonOrders
-              .filter(o => o.createdBy === currentUser?.id)
-              .map((order) => {
-                const cfg = order.status === "pending_cashier" ? { label: "Awaiting Cashier", color: "bg-amber-500/20 text-amber-300 border-amber-500/30" } :
-                            order.status === "ready_for_checkout" ? { label: "Ready for Checkout", color: "bg-teal-500/20 text-teal-300 border-teal-500/30" } :
-                            order.status === "completed" ? { label: "Completed", color: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" } :
-                            { label: "Cancelled", color: "bg-red-500/20 text-red-300 border-red-500/30" };
-                const canCancel = order.status === "pending_cashier" || order.status === "ready_for_checkout";
-                return (
-                  <div
-                    key={order.id}
-                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border border-border bg-surface-container-high/40"
-                  >
-                    <div className="flex flex-col gap-0.5">
-                      <div className="flex items-center gap-2">
-                        <User className="h-3.5 w-3.5 text-teal-400" />
-                        <p className="text-sm font-semibold text-foreground">{order.patientName}</p>
-                      </div>
-                      <p className="text-xs text-muted">
-                        {order.items.map(i => `${i.drugName} x${i.quantity}`).join(", ")} · {currency(order.total)} · {relativeTime(order.createdAt)}
-                      </p>
+            myActiveInPersonOrders.map((order) => {
+              const cfg = order.status === "pending_cashier" ? { label: "Awaiting Cashier", color: "bg-amber-500/20 text-amber-300 border-amber-500/30" } :
+                          order.status === "ready_for_checkout" ? { label: "Ready for Checkout", color: "bg-teal-500/20 text-teal-300 border-teal-500/30" } :
+                          order.status === "completed" ? { label: "Completed", color: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" } :
+                          { label: "Cancelled", color: "bg-red-500/20 text-red-300 border-red-500/30" };
+              const canCancel = order.status === "pending_cashier" || order.status === "ready_for_checkout";
+              const isFinished = order.status === "completed" || order.status === "cancelled";
+              return (
+                <div
+                  key={order.id}
+                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border border-border bg-surface-container-high/40"
+                >
+                  <div className="flex flex-col gap-0.5">
+                    <div className="flex items-center gap-2">
+                      <User className="h-3.5 w-3.5 text-teal-400" />
+                      <p className="text-sm font-semibold text-foreground">{order.patientName}</p>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <Badge className={`text-[11px] ${cfg.color}`}>{cfg.label}</Badge>
-                      {canCancel && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => cancelInPersonOrder(order.id)}
-                          className="h-7 text-xs border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20 hover:text-red-200 gap-1"
-                          title="Cancel this order"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                          Cancel Order
-                        </Button>
-                      )}
-                    </div>
+                    <p className="text-xs text-muted">
+                      {order.items.map(i => `${i.drugName} x${i.quantity}`).join(", ")} · {currency(order.total)} · {relativeTime(order.createdAt)}
+                    </p>
                   </div>
-                );
-              })
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Badge className={`text-[11px] ${cfg.color}`}>{cfg.label}</Badge>
+                    {canCancel && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => cancelInPersonOrder(order.id)}
+                        className="h-7 text-xs border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20 hover:text-red-200 gap-1"
+                        title="Cancel this order"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                        Cancel Order
+                      </Button>
+                    )}
+                    {isFinished && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => markInPersonOrderAsViewed(order.id)}
+                        className="h-7 text-xs border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 gap-1"
+                        title="Acknowledge and dismiss from active view"
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                        Acknowledge
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              );
+            })
           )}
         </CardContent>
       </Card>
@@ -258,25 +319,29 @@ function PharmacistContent() {
             </CardContent>
           </Card>
 
-          {/* Completed Orders */}
-          {completedOrders.length > 0 && (
+          {/* Completed & Cancelled Customer Orders (Disappears after viewed/acknowledged) */}
+          {unviewedCompletedOrCancelledCustomerOrders.length > 0 && (
             <Card>
               <CardHeader className="flex-row items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="h-5 w-5 text-emerald-400" />
-                  <CardTitle className="text-foreground">Completed Orders</CardTitle>
+                  <CardTitle className="text-foreground">Completed &amp; Cancelled Orders</CardTitle>
                 </div>
                 <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-emerald-500 text-slate-950 text-xs font-bold px-1.5">
-                  {completedOrders.length}
+                  {unviewedCompletedOrCancelledCustomerOrders.length}
                 </span>
               </CardHeader>
               <CardContent className="flex flex-col gap-2">
-                {completedOrders.map((ord) => {
+                {unviewedCompletedOrCancelledCustomerOrders.map((ord) => {
                   const cfg = STATUS_CONFIG[ord.status] ?? STATUS_CONFIG.completed;
                   return (
                     <div
                       key={ord.id}
-                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border border-emerald-500/20 bg-emerald-500/5"
+                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border border-emerald-500/20 bg-emerald-500/5 cursor-pointer hover:bg-emerald-500/10 transition-all"
+                      onClick={() => {
+                        setSelectedOrder(ord.id);
+                        markCustomerOrderAsViewed(ord.id);
+                      }}
                     >
                       <div className="flex flex-col gap-0.5">
                         <div className="flex items-center gap-2">
@@ -288,7 +353,19 @@ function PharmacistContent() {
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <Badge className={`text-[11px] ${cfg.color}`}>{cfg.label}</Badge>
-                        <span className="text-[10px] text-muted">Receipt printed</span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 gap-1"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            markCustomerOrderAsViewed(ord.id);
+                          }}
+                          title="Acknowledge and clear from active view"
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                          Acknowledge
+                        </Button>
                       </div>
                     </div>
                   );
@@ -337,14 +414,14 @@ function PharmacistContent() {
 
         {/* Right: Quick Stats */}
         <div className="xl:col-span-2 flex flex-col gap-4">
-          {/* ── Live Sales Cards (this pharmacist only) ─────────────── */}
+          {/* ── Live Sales Cards (this pharmacist only - today's stats) ─────────────── */}
           <div className="grid grid-cols-2 gap-3">
             <Card className="border-emerald-500/30 bg-gradient-to-br from-emerald-950/40 to-surface-container">
               <CardContent className="flex items-center gap-2.5 p-4">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-400"><Pill className="h-4 w-4" /></div>
                 <div>
-                  <p className="text-xl font-bold text-foreground">{myUnitsSold}</p>
-                  <p className="text-[11px] text-muted">Meds Sold by Me</p>
+                  <p className="text-xl font-bold text-foreground">{myUnitsSoldToday}</p>
+                  <p className="text-[11px] text-muted">Meds Sold by Me Today</p>
                 </div>
               </CardContent>
             </Card>
@@ -352,8 +429,8 @@ function PharmacistContent() {
               <CardContent className="flex items-center gap-2.5 p-4">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-500/20 text-teal-400"><DollarSign className="h-4 w-4" /></div>
                 <div>
-                  <p className="text-xl font-bold text-foreground">{currency(myRevenue)}</p>
-                  <p className="text-[11px] text-muted">Revenue I Made</p>
+                  <p className="text-xl font-bold text-foreground">{currency(myRevenueToday)}</p>
+                  <p className="text-[11px] text-muted">Today&apos;s Revenue</p>
                 </div>
               </CardContent>
             </Card>
