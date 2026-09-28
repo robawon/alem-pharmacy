@@ -25,8 +25,14 @@ create table if not exists public.pharmacy_orders (
   received_by text,
   received_at timestamptz,
   completed_at timestamptz,
-  sale_id text -- tracks completed_sales.id to prevent duplicate sale creation on double-click
+  sale_id text, -- tracks completed_sales.id to prevent duplicate sale creation on double-click
+  pharmacist_viewed boolean not null default false
 );
+
+-- Ensure column exists for existing deployments
+alter table public.pharmacy_orders
+add column if not exists pharmacist_viewed boolean not null default false;
+
 -- 2. Enable Row Level Security
 alter table public.pharmacy_orders enable row level security;
 -- 3. RLS Policy: all authenticated users (pharmacists, cashiers, admins) can read/write

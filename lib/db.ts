@@ -96,7 +96,7 @@ function toCustomerOrder(r: any): CustomerOrder {
     updatedAt: r.updated_at, pickupReady: r.pickup_ready ?? false,
     contactInfo, prescriptionFileName: r.prescription_file_name ?? undefined,
     prescriptionNotes: r.prescription_notes ?? undefined,
-    pharmacistViewed: r.pharmacist_viewed ?? r.viewed_by_pharmacist ?? false,
+    pharmacistViewed: r.pharmacist_viewed ?? false,
   };
 }
 
@@ -246,7 +246,7 @@ function toInPersonOrder(r: any): InPersonOrder {
     receivedAt: r.received_at ?? undefined,
     completedAt: r.completed_at ?? undefined,
     saleId: r.sale_id ?? undefined,
-    pharmacistViewed: r.pharmacist_viewed ?? r.viewed_by_pharmacist ?? false,
+    pharmacistViewed: r.pharmacist_viewed ?? false,
   };
 }
 
