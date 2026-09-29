@@ -100,7 +100,7 @@ function toCustomerOrder(r: any): CustomerOrder {
   };
 }
 
-function toSaleRecord(r: any): SaleRecord {
+export function toSaleRecord(r: any): SaleRecord {
   const pharmacistName =
     r.pharmacist?.full_name ||
     r.pharmacist?.name ||
@@ -121,16 +121,16 @@ function toSaleRecord(r: any): SaleRecord {
 
   return {
     id: r.id,
-    items: r.items ?? [],
-    subtotal: Number(r.subtotal),
+    items: Array.isArray(r.items) ? r.items : (typeof r.items === "string" ? JSON.parse(r.items) : []),
+    subtotal: Number(r.subtotal || 0),
     discount: r.discount ?? null,
-    discountAmount: Number(r.discount_amount),
-    tax: Number(r.tax),
-    total: Number(r.total),
-    paymentMethod: r.payment_method,
-    amountTendered: Number(r.amount_tendered),
-    changeDue: Number(r.change_due),
-    timestamp: r.timestamp,
+    discountAmount: Number(r.discount_amount || 0),
+    tax: Number(r.tax || 0),
+    total: Number(r.total || 0),
+    paymentMethod: r.payment_method || "cash",
+    amountTendered: Number(r.amount_tendered || 0),
+    changeDue: Number(r.change_due || 0),
+    timestamp: r.timestamp || new Date().toISOString(),
     salespersonId: r.salesperson_id || r.pharmacist_id || r.user_id || undefined,
     pharmacistName,
     cashierId: r.cashier_id || undefined,
@@ -717,6 +717,22 @@ export async function insertCompletedSale(sale: SaleRecord) {
     .select();
 
   if (error) {
+    if (error.code === "23503") {
+      const fallbackPayload = {
+        ...payload,
+        salesperson_id: null,
+        cashier_id: null,
+      };
+      const { data: fbData, error: fbError } = await supabase
+        .from("completed_sales")
+        .insert(fallbackPayload)
+        .select();
+
+      if (!fbError) {
+        return fbData;
+      }
+    }
+
     console.error("insertCompletedSale failed:", {
       message: error.message,
       details: error.details,

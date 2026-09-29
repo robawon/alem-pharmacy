@@ -196,10 +196,8 @@ function AdminDashboardContent() {
 
   const recentTransactions = useMemo(
     () => {
-      const days = getLast7CalendarDays(dashboardDate);
-
       return completedSales
-        .filter((sale) => isDateIn7DayWindow(new Date(sale.timestamp), days))
+        .slice()
         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
         .map((sale) => {
           const medicineNames = Array.isArray(sale.items) && sale.items.length > 0
@@ -224,7 +222,7 @@ function AdminDashboardContent() {
           };
         });
     },
-    [completedSales, dashboardDate, staffProfiles],
+    [completedSales, staffProfiles],
   );
 
   const handleRoleChange = (profileId: string, role: Role) => {
@@ -342,7 +340,7 @@ function AdminDashboardContent() {
           <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <div>
               <CardTitle>Recent Transactions</CardTitle>
-              <p className="text-xs text-muted mt-0.5">Showing last 7 days of completed sales (Scroll to view all)</p>
+              <p className="text-xs text-muted mt-0.5">Complete transaction history from database (Scroll to view all)</p>
             </div>
             <Badge variant="default" className="text-[10px] font-mono">
               {recentTransactions.length} Total

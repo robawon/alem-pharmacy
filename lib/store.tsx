@@ -15,7 +15,7 @@ import {
   insertStaffProfile, updateStaffRole, updateStaffStatus, deleteStaffProfile, updateMedicineRecord,
   updateStaffProfile, restoreInventoryStock, restoreCatalogStock, deductInventoryStock, deductCatalogStock,
   updateCatalogItem, fetchPharmacyOrders, insertPharmacyOrder, updatePharmacyOrderStatus, getPharmacyOrderSaleId,
-  updateCustomerOrderViewed, updatePharmacyOrderViewed,
+  updateCustomerOrderViewed, updatePharmacyOrderViewed, toSaleRecord,
 } from "./db";
 
 import { calculateTaxStatus } from "./tax";
@@ -195,7 +195,21 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         // Cashier receives/completes order → UPDATE fires here → pharmacist sees update
         fetchPharmacyOrders().then(setInPersonOrders).catch(console.error);
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "completed_sales" }, () => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "completed_sales" }, (payload: any) => {
+        if (payload?.eventType === "INSERT" && payload?.new) {
+          try {
+            const newRecord = toSaleRecord(payload.new);
+            setCompletedSales((prev) => {
+              const map = new Map<string, SaleRecord>();
+              [newRecord, ...prev].forEach((s) => map.set(s.id, s));
+              return Array.from(map.values()).sort(
+                (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+              );
+            });
+          } catch (err) {
+            console.warn("Failed to process realtime completed_sales payload:", err);
+          }
+        }
         fetchCompletedSales().then((fetched) => {
           setCompletedSales((prev) => {
             const map = new Map<string, SaleRecord>();
@@ -643,7 +657,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const closeShift = useCallback((closingCash: number) => {
     setShiftOpenFloat(closingCash);
-    setCompletedSales([]);
     addLog("CLOSE_SHIFT", `Closed shift with ${currency(closingCash)} cash`);
   }, [addLog]);
 
