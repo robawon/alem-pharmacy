@@ -985,8 +985,8 @@ export default function PosPage() {
               <div className="flex justify-between text-xs text-muted border-b border-border pb-2">
                 <span>Customer: {(lastSale as any).patientName}</span>
                 <span>
-                  {lastSale?.timestamp
-                    ? new Date(lastSale.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                  {(lastSale as any)?.timestamp
+                    ? new Date((lastSale as any).timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
                     : ""}
                 </span>
               </div>
