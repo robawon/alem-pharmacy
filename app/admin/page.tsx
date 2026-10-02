@@ -107,7 +107,11 @@ function AdminDashboardContent() {
   const [activeSheetProfile, setActiveSheetProfile] = useState<StaffProfile | null>(null);
 
   const [pendingVerificationCount, setPendingVerificationCount] = useState<number | null>(null);
-  const [dashboardDate, setDashboardDate] = useState(() => new Date());
+  const [dashboardDate, setDashboardDate] = useState<Date | null>(null);
+
+  useEffect(() => {
+    setDashboardDate(new Date());
+  }, []);
 
   useEffect(() => {
     async function loadPendingCount() {
@@ -141,6 +145,7 @@ function AdminDashboardContent() {
   }, []);
 
   useEffect(() => {
+    if (!dashboardDate) return;
     const scheduleNextDayRefresh = () => {
       const now = new Date();
       const nextDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
@@ -179,7 +184,7 @@ function AdminDashboardContent() {
   }, [searchTerm, staffProfiles]);
 
   const weeklyRevenue = useMemo(() => {
-    const days = getLast7CalendarDays(dashboardDate);
+    const days = getLast7CalendarDays(dashboardDate || undefined);
     const revenueByDay = new Map<string, number>();
 
     completedSales.forEach((sale) => {

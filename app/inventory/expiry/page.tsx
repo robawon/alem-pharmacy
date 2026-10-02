@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect, useMemo } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -24,16 +25,24 @@ function getSeverity(days: number): "critical" | "warning" | "ok" {
 
 export default function ExpiryTrackingPage() {
   const { inventory, quarantineBatch } = useStore();
+  const [mounted, setMounted] = useState(false);
 
-  const batches = inventory
-    .filter((b) => {
-      const days = getDaysUntilExpiry(b.expiryDate);
-      return days <= 90;
-    })
-    .sort((a, b) => getDaysUntilExpiry(a.expiryDate) - getDaysUntilExpiry(b.expiryDate));
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
-  const critical = batches.filter((b) => getSeverity(getDaysUntilExpiry(b.expiryDate)) === "critical");
-  const warning = batches.filter((b) => getSeverity(getDaysUntilExpiry(b.expiryDate)) === "warning");
+  const batches = useMemo(() => {
+    if (!mounted) return [];
+    return inventory
+      .filter((b) => {
+        const days = getDaysUntilExpiry(b.expiryDate);
+        return days <= 90;
+      })
+      .sort((a, b) => getDaysUntilExpiry(a.expiryDate) - getDaysUntilExpiry(b.expiryDate));
+  }, [inventory, mounted]);
+
+  const critical = useMemo(() => batches.filter((b) => getSeverity(getDaysUntilExpiry(b.expiryDate)) === "critical"), [batches]);
+  const warning = useMemo(() => batches.filter((b) => getSeverity(getDaysUntilExpiry(b.expiryDate)) === "warning"), [batches]);
 
   return (
     <AppShell requiredRole="inventory">

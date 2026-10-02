@@ -984,7 +984,11 @@ export default function PosPage() {
             <div className="flex flex-col gap-3 py-2">
               <div className="flex justify-between text-xs text-muted border-b border-border pb-2">
                 <span>Customer: {(lastSale as any).patientName}</span>
-                <span>{new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                <span>
+                  {lastSale?.timestamp
+                    ? new Date(lastSale.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                    : ""}
+                </span>
               </div>
 
               {/* Line items */}

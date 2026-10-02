@@ -211,6 +211,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           }
         }
         fetchCompletedSales().then((fetched) => {
+          if (!fetched || fetched.length === 0) return;
           setCompletedSales((prev) => {
             const map = new Map<string, SaleRecord>();
             fetched.forEach((s) => map.set(s.id, s));
@@ -237,6 +238,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     // Fallback polling loop (every 15 seconds) to ensure Admin Dashboard updates even if WebSockets reconnect
     const pollInterval = setInterval(() => {
       fetchCompletedSales().then((fetched) => {
+        if (!fetched || fetched.length === 0) return;
         setCompletedSales((prev) => {
           const map = new Map<string, SaleRecord>();
           fetched.forEach((s) => map.set(s.id, s));

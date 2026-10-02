@@ -35,13 +35,18 @@ export function InventorySidebar() {
   const clerkName = currentUser?.name || "Tigist Haile";
 
   // Count batches expiring within 90 days
-  const today = new Date();
-  const expiringCount = inventory.filter((b) => {
-    if (b.quarantined) return false;
-    const expiry = new Date(b.expiryDate);
-    const daysLeft = (expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
-    return daysLeft >= 0 && daysLeft <= 90;
-  }).length;
+  const [expiringCount, setExpiringCount] = useState<number>(0);
+
+  useEffect(() => {
+    const today = new Date();
+    const count = inventory.filter((b) => {
+      if (b.quarantined) return false;
+      const expiry = new Date(b.expiryDate);
+      const daysLeft = (expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
+      return daysLeft >= 0 && daysLeft <= 90;
+    }).length;
+    setExpiringCount(count);
+  }, [inventory]);
 
   const INVENTORY_NAV_ITEMS = [
     {
