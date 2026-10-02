@@ -377,24 +377,17 @@ export async function claimPharmacyOrder(orderId: string, saleId: string): Promi
 export async function fetchCompletedSales(): Promise<SaleRecord[]> {
   const { data, error } = await supabase
     .from("completed_sales")
-    .select(`
-      *,
-      cashier:staff_profiles!completed_sales_cashier_id_fkey(id, name),
-      pharmacist:staff_profiles!completed_sales_salesperson_id_fkey(id, name)
-    `)
+    .select("*")
     .order("timestamp", { ascending: false });
 
   if (error) {
-    const { data: fallbackData, error: fallbackErr } = await supabase
-      .from("completed_sales")
-      .select("*")
-      .order("timestamp", { ascending: false });
-
-    if (fallbackErr) {
-      console.error("fetchCompletedSales fallback:", fallbackErr.message);
-      return [];
-    }
-    return (fallbackData ?? []).map(toSaleRecord);
+    console.error("fetchCompletedSales Error:", {
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+      code: error.code,
+    });
+    return [];
   }
 
   return (data ?? []).map(toSaleRecord);
