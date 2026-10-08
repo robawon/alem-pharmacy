@@ -14,7 +14,7 @@ import {
   insertUploadedPrescription, fetchUploadedPrescriptions, updateUploadedPrescriptionStatus,
   insertStaffProfile, updateStaffRole, updateStaffStatus, deleteStaffProfile, updateMedicineRecord,
   updateStaffProfile, restoreInventoryStock, restoreCatalogStock, deductInventoryStock, deductCatalogStock,
-  updateCatalogItem, fetchPharmacyOrders, insertPharmacyOrder, updatePharmacyOrderStatus, getPharmacyOrderSaleId,
+  updateCatalogItem, fetchPharmacyOrders, fetchPharmacyOrderById, insertPharmacyOrder, updatePharmacyOrderStatus, getPharmacyOrderSaleId,
   updateCustomerOrderViewed, updatePharmacyOrderViewed, toSaleRecord,
 } from "./db";
 
@@ -200,29 +200,37 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           try {
             const newRecord = toSaleRecord(payload.new);
             setCompletedSales((prev) => {
+              if (prev.some((s) => s.id === newRecord.id)) return prev;
+              const next = [newRecord, ...prev];
+              return next.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+            });
+          } catch (err) {
+            console.warn("Failed to process realtime completed_sales INSERT payload:", err);
+          }
+        } else if (payload?.eventType === "UPDATE" && payload?.new) {
+          try {
+            const updatedRecord = toSaleRecord(payload.new);
+            setCompletedSales((prev) => {
               const map = new Map<string, SaleRecord>();
-              [newRecord, ...prev].forEach((s) => map.set(s.id, s));
+              prev.forEach((s) => map.set(s.id, s));
+              map.set(updatedRecord.id, updatedRecord);
               return Array.from(map.values()).sort(
                 (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
               );
             });
           } catch (err) {
-            console.warn("Failed to process realtime completed_sales payload:", err);
+            console.warn("Failed to process realtime completed_sales UPDATE payload:", err);
+          }
+        } else if (payload?.eventType === "DELETE" && payload?.old) {
+          try {
+            const deletedId = payload.old.id;
+            setCompletedSales((prev) => prev.filter((s) => s.id !== deletedId));
+          } catch (err) {
+            console.warn("Failed to process realtime completed_sales DELETE payload:", err);
           }
         }
-        fetchCompletedSales().then((fetched) => {
-          if (!fetched || fetched.length === 0) return;
-          setCompletedSales((prev) => {
-            const map = new Map<string, SaleRecord>();
-            fetched.forEach((s) => map.set(s.id, s));
-            prev.forEach((s) => {
-              if (!map.has(s.id)) map.set(s.id, s);
-            });
-            return Array.from(map.values()).sort(
-              (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-            );
-          });
-        }).catch(console.error);
+
+        // Individual INSERT/UPDATE/DELETE handlers above keep state in sync without a full re-fetch.
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "uploaded_prescriptions" }, () => {
         fetchUploadedPrescriptions().then(setUploadedPrescriptions).catch(console.error);
@@ -235,22 +243,22 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       })
       .subscribe();
 
-    // Fallback polling loop (every 15 seconds) to ensure Admin Dashboard updates even if WebSockets reconnect
+    // Fallback polling loop (every 60 seconds) to ensure Admin Dashboard stays in sync with DB
     const pollInterval = setInterval(() => {
       fetchCompletedSales().then((fetched) => {
-        if (!fetched || fetched.length === 0) return;
+        if (!fetched) return;
         setCompletedSales((prev) => {
+          // DB is source of truth — use fetched as the base.
+          // Keep any local records that the DB might not have returned yet (e.g. just inserted).
           const map = new Map<string, SaleRecord>();
           fetched.forEach((s) => map.set(s.id, s));
-          prev.forEach((s) => {
-            if (!map.has(s.id)) map.set(s.id, s);
-          });
+          // Do NOT preserve prev records that contradict DB — DB wins.
           return Array.from(map.values()).sort(
             (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
           );
         });
       }).catch(console.error);
-    }, 15000);
+    }, 60000);
 
     return () => {
       supabase.removeChannel(channel);
@@ -1153,30 +1161,58 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const amountTendered = paymentDetails?.amountTendered !== undefined ? paymentDetails.amountTendered : (order?.total || 0);
     const changeDue = paymentDetails?.changeDue !== undefined ? paymentDetails.changeDue : 0;
 
-    let completedSaleId = newId("sale");
+    console.log("[completeInPersonOrder] Starting completion for order:", orderId, {
+      orderStatus: order?.status,
+      paymentMethod,
+      amountTendered,
+      changeDue,
+      total: order?.total,
+    });
 
-    // Skip the RPC — it inserts completed_sales without payment_method/amount_tendered/change_due.
-    // Always do a direct pharmacy_orders status update, then insert the full sale record below.
+    // ── Step 1: Check if the order already has a sale_id (idempotency guard) ──
+    const existingSaleId = order?.saleId ?? null;
+    if (existingSaleId) {
+      console.log("[completeInPersonOrder] Order already has sale_id:", existingSaleId, "- marking as completed without re-inserting.");
+      setInPersonOrders(prev => prev.map(o => o.id === orderId ? {
+        ...o, status: "completed", completedAt: now, saleId: existingSaleId,
+      } : o));
+      addLog("IN_PERSON_ORDER_COMPLETED", `Order ${orderId} already completed — Receipt ${existingSaleId}`);
+      return true;
+    }
+
+    // ── Step 2: Generate a new sale ID and atomically claim the order ──
+    const completedSaleId = newId("sale");
+
     const { error: updateErr } = await updatePharmacyOrderStatus(orderId, "completed", {
       completedAt: now,
       saleId: completedSaleId,
     });
+
     if (updateErr) {
       console.error("[completeInPersonOrder] Failed to update pharmacy_orders status:", updateErr);
+      // Attempt to re-fetch to check actual DB state before returning false
+      try {
+        const freshOrder = await fetchPharmacyOrderById(orderId);
+        if (freshOrder?.status === "completed" && freshOrder.saleId) {
+          console.log("[completeInPersonOrder] DB shows already completed with sale_id:", freshOrder.saleId);
+          setInPersonOrders(prev => prev.map(o => o.id === orderId ? {
+            ...o, status: "completed", completedAt: freshOrder.completedAt || now, saleId: freshOrder.saleId,
+          } : o));
+          addLog("IN_PERSON_ORDER_COMPLETED", `Order ${orderId} already completed — Receipt ${freshOrder.saleId}`);
+          return true;
+        }
+      } catch (_) { /* ignore */ }
     }
 
-    // Update local inPersonOrders to status completed
+    // ── Step 3: Update local state optimistically ──
     setInPersonOrders(prev => prev.map(o => o.id === orderId ? {
-      ...o,
-      status: "completed",
-      completedAt: now,
-      saleId: completedSaleId,
+      ...o, status: "completed", completedAt: now, saleId: completedSaleId,
     } : o));
 
-    const creatorId = order?.createdBy || currentUser?.id;
-    const pharmacistProfile = staffProfiles.find(s => s.id === creatorId);
+    const creatorId = order?.createdBy || undefined;
+    const pharmacistProfile = creatorId ? staffProfiles.find(s => s.id === creatorId) : undefined;
     const cashierId = currentUser?.id;
-    const cashierProfile = staffProfiles.find(s => s.id === cashierId) || currentUser;
+    const cashierProfile = cashierId ? (staffProfiles.find(s => s.id === cashierId) || currentUser) : currentUser;
 
     if (order) {
       const saleRecord: SaleRecord = {
@@ -1202,27 +1238,35 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         cashierName: cashierProfile?.name,
       };
 
-      // Update local completedSales
+      // ── Step 4: Optimistically update local completedSales ──
       setCompletedSales(prev => {
-        const map = new Map<string, SaleRecord>();
-        [saleRecord, ...prev].forEach(s => map.set(s.id, s));
-        return Array.from(map.values()).sort(
-          (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-        );
+        if (prev.some(s => s.id === saleRecord.id)) return prev;
+        const next = [saleRecord, ...prev];
+        return next.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       });
 
-      // Always insert into completed_sales with full payment details (method, tendered, change).
-      // If a duplicate-key error occurs (from a previous partial attempt), ignore it.
+      // ── Step 5: Persist the sale record to Supabase ──
+      // If a duplicate-key error occurs (from a previous partial attempt), silently ignore it.
       try {
         await insertCompletedSale(saleRecord);
+        console.log("[completeInPersonOrder] Sale inserted successfully:", completedSaleId, "total:", order.total, "method:", paymentMethod);
       } catch (err: any) {
         const msg = String(err?.message || err);
-        if (!msg.includes("duplicate") && !msg.includes("23505")) {
-          console.error("[completeInPersonOrder] insertCompletedSale failed:", err);
+        if (msg.includes("duplicate") || msg.includes("23505")) {
+          console.log("[completeInPersonOrder] Sale already exists in DB (duplicate), ignoring:", completedSaleId);
+        } else {
+          console.error("[completeInPersonOrder] insertCompletedSale failed:", {
+            saleId: completedSaleId,
+            orderId,
+            total: order.total,
+            error: msg,
+          });
+          // Roll back the optimistic update if insert truly failed
+          setCompletedSales(prev => prev.filter(s => s.id !== saleRecord.id));
         }
       }
 
-      // Update inventory quantities
+      // ── Step 6: Deduct inventory quantities ──
       setInventory(prev =>
         prev.map(batch => {
           const soldItem = order.items.find(item =>
@@ -1236,7 +1280,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         })
       );
 
-      // Update catalog quantities
+      // ── Step 7: Deduct catalog quantities ──
       setCatalog(prev =>
         prev.map(cat => {
           const soldItem = order.items.find(item =>
@@ -1252,7 +1296,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       );
     }
 
-    // Add the audit log
     addLog("IN_PERSON_ORDER_COMPLETED", `Order ${orderId} completed and paid via ${paymentMethod} — Receipt ${completedSaleId} created`);
     return true;
   }, [inPersonOrders, addLog, currentUser, staffProfiles]);

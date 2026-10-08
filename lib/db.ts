@@ -230,7 +230,7 @@ export async function fetchCustomerOrders(): Promise<CustomerOrder[]> {
 // removed because its CHECK CONSTRAINT rejected 'pending_cashier' and
 // 'ready_for_checkout', silently dropping every INSERT.
 
-function toInPersonOrder(r: any): InPersonOrder {
+export function toInPersonOrder(r: any): InPersonOrder {
   return {
     id: r.id,
     patientName: r.patient_name,
@@ -262,6 +262,17 @@ export async function fetchPharmacyOrders(): Promise<InPersonOrder[]> {
   }
 
   return (data ?? []).map(toInPersonOrder);
+}
+
+export async function fetchPharmacyOrderById(orderId: string): Promise<InPersonOrder | null> {
+  const { data, error } = await supabase
+    .from("pharmacy_orders")
+    .select("*")
+    .eq("id", orderId)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return toInPersonOrder(data);
 }
 
 export async function insertPharmacyOrder(order: InPersonOrder): Promise<{ error: string | null }> {
@@ -375,22 +386,44 @@ export async function claimPharmacyOrder(orderId: string, saleId: string): Promi
 }
 
 export async function fetchCompletedSales(): Promise<SaleRecord[]> {
-  const { data, error } = await supabase
-    .from("completed_sales")
-    .select("*")
-    .order("timestamp", { ascending: false });
+  const allRows: any[] = [];
+  let page = 0;
+  const pageSize = 1000;
+  let hasMore = true;
 
-  if (error) {
-    console.error("fetchCompletedSales Error:", {
-      message: error.message,
-      details: error.details,
-      hint: error.hint,
-      code: error.code,
-    });
-    return [];
+  while (hasMore) {
+    const { data, error } = await supabase
+      .from("completed_sales")
+      .select("*")
+      .order("timestamp", { ascending: false })
+      .range(page * pageSize, (page + 1) * pageSize - 1);
+
+    if (error) {
+      console.error("fetchCompletedSales Error:", {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+      });
+      if (allRows.length === 0) {
+        throw error;
+      }
+      break;
+    }
+
+    if (data && data.length > 0) {
+      allRows.push(...data);
+      if (data.length < pageSize) {
+        hasMore = false;
+      } else {
+        page++;
+      }
+    } else {
+      hasMore = false;
+    }
   }
 
-  return (data ?? []).map(toSaleRecord);
+  return allRows.map(toSaleRecord);
 }
 
 export async function fetchStaffProfiles(): Promise<StaffProfile[]> {
