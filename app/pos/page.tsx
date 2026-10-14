@@ -56,6 +56,7 @@ export default function PosPage() {
   const [approvedOrderPaymentMethods, setApprovedOrderPaymentMethods] = useState<Record<string, "cash" | "mobile" | "other" | "">>({});
   const [approvedOrderAmountsTendered, setApprovedOrderAmountsTendered] = useState<Record<string, string>>({});
   const [approvedOrderErrors, setApprovedOrderErrors] = useState<Record<string, string | null>>({});
+  const [isSaleProcessing, setIsSaleProcessing] = useState(false);
 
   useEffect(() => {
     if (store.inPersonOrders.some((order) => order.status === "pending_cashier" || order.status === "ready_for_checkout")) {
@@ -162,6 +163,7 @@ export default function PosPage() {
 
   // ─── Complete sale tied to a ready order ────────────────────────
   async function handleCompleteSale() {
+    if (isSaleProcessing) return;
     setCheckoutError(null);
     if (store.cart.length === 0) return;
 
@@ -178,43 +180,48 @@ export default function PosPage() {
       }
     }
 
-    const tendered = paymentMethod === "cash" ? parseFloat(amountTendered) : cartTotal;
-    const change = paymentMethod === "cash" ? Math.max(0, tendered - cartTotal) : 0;
-    const itemsCopy = [...store.cart];
-    const completed = await store.completeSale({
-      items: itemsCopy,
-      subtotal,
-      discount: store.activeDiscount,
-      discountAmount,
-      tax,
-      total: cartTotal,
-      paymentMethod,
-      amountTendered: tendered,
-      changeDue: change,
-      cashierId: store.currentUser?.id,
-      cashierName: store.currentUser?.name,
-    });
-    if (!completed) return;
+    setIsSaleProcessing(true);
+    try {
+      const tendered = paymentMethod === "cash" ? parseFloat(amountTendered) : cartTotal;
+      const change = paymentMethod === "cash" ? Math.max(0, tendered - cartTotal) : 0;
+      const itemsCopy = [...store.cart];
+      const completed = await store.completeSale({
+        items: itemsCopy,
+        subtotal,
+        discount: store.activeDiscount,
+        discountAmount,
+        tax,
+        total: cartTotal,
+        paymentMethod,
+        amountTendered: tendered,
+        changeDue: change,
+        cashierId: store.currentUser?.id,
+        cashierName: store.currentUser?.name,
+      });
+      if (!completed) return;
 
-    // Mark the linked order as completed
-    if (selectedReadyOrder) {
-      store.updateCustomerOrderStatus(selectedReadyOrder.id, "completed");
+      // Mark the linked order as completed
+      if (selectedReadyOrder) {
+        store.updateCustomerOrderStatus(selectedReadyOrder.id, "completed");
+      }
+      setLastSale({
+        total: cartTotal,
+        subtotal,
+        tax,
+        method: paymentMethod,
+        change,
+        orderId: selectedReadyOrder?.id,
+        items: itemsCopy,
+        patientName: selectedReadyOrder?.patientName || "Walk-in Customer",
+      } as any);
+      setSelectedReadyOrder(null);
+      setReceiptModalOpen(true);
+      setAmountTendered("");
+      setPaymentMethod("");
+      setCheckoutError(null);
+    } finally {
+      setIsSaleProcessing(false);
     }
-    setLastSale({
-      total: cartTotal,
-      subtotal,
-      tax,
-      method: paymentMethod,
-      change,
-      orderId: selectedReadyOrder?.id,
-      items: itemsCopy,
-      patientName: selectedReadyOrder?.patientName || "Walk-in Customer",
-    } as any);
-    setSelectedReadyOrder(null);
-    setReceiptModalOpen(true);
-    setAmountTendered("");
-    setPaymentMethod("");
-    setCheckoutError(null);
   }
 
   // ─── Other handlers (unchanged) ─────────────────────────────────
@@ -667,6 +674,7 @@ export default function PosPage() {
                   className="mt-2 w-full gap-2"
                   disabled={
                     store.cart.length === 0 ||
+                    isSaleProcessing ||
                     !paymentMethod ||
                     (paymentMethod === "cash" && (isNaN(parseFloat(amountTendered)) || parseFloat(amountTendered) < cartTotal))
                   }
@@ -677,6 +685,8 @@ export default function PosPage() {
                     ? "Select a Payment Method"
                     : selectedReadyOrder
                     ? "Complete & Mark Order Done"
+                    : isSaleProcessing
+                    ? "Processing..."
                     : "Complete Sale & Print"}
                 </Button>
               </CardContent>

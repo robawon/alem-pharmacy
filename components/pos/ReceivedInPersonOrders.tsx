@@ -17,6 +17,7 @@ export function ReceivedInPersonOrders() {
   const [selectedPaymentMethods, setSelectedPaymentMethods] = useState<Record<string, "cash" | "mobile" | "other" | "">>({});
   const [amountsTendered, setAmountsTendered] = useState<Record<string, string>>({});
   const [orderErrors, setOrderErrors] = useState<Record<string, string | null>>({});
+  const [processingOrderIds, setProcessingOrderIds] = useState<Set<string>>(new Set());
 
   const handleCancelOrder = (orderId: string) => {
     cancelInPersonOrder(orderId);
@@ -37,6 +38,7 @@ export function ReceivedInPersonOrders() {
 
   const handleProcessOrder = async (order: any) => {
     const orderId = order.id;
+    if (processingOrderIds.has(orderId)) return;
     const method = selectedPaymentMethods[orderId];
     setOrderErrors((prev) => ({ ...prev, [orderId]: null }));
 
@@ -59,20 +61,29 @@ export function ReceivedInPersonOrders() {
       }
     }
 
-    const tendered = method === "cash" ? parseFloat(amountsTendered[orderId]) : order.total;
-    const change = method === "cash" ? Math.max(0, tendered - order.total) : 0;
+    setProcessingOrderIds((prev) => new Set(prev).add(orderId));
+    try {
+      const tendered = method === "cash" ? parseFloat(amountsTendered[orderId]) : order.total;
+      const change = method === "cash" ? Math.max(0, tendered - order.total) : 0;
 
-    const success = await completeInPersonOrder(orderId, {
-      paymentMethod: method as any,
-      amountTendered: tendered,
-      changeDue: change,
-    });
+      const success = await completeInPersonOrder(orderId, {
+        paymentMethod: method as any,
+        amountTendered: tendered,
+        changeDue: change,
+      });
 
-    if (success) {
-      setExpandedOrderId(null);
-      setSelectedPaymentMethods((prev) => ({ ...prev, [orderId]: "" }));
-      setAmountsTendered((prev) => ({ ...prev, [orderId]: "" }));
-      setOrderErrors((prev) => ({ ...prev, [orderId]: null }));
+      if (success) {
+        setExpandedOrderId(null);
+        setSelectedPaymentMethods((prev) => ({ ...prev, [orderId]: "" }));
+        setAmountsTendered((prev) => ({ ...prev, [orderId]: "" }));
+        setOrderErrors((prev) => ({ ...prev, [orderId]: null }));
+      }
+    } finally {
+      setProcessingOrderIds((prev) => {
+        const s = new Set(prev);
+        s.delete(orderId);
+        return s;
+      });
     }
   };
 
@@ -233,15 +244,16 @@ export function ReceivedInPersonOrders() {
             <div className="flex gap-2">
               <Button
                 size="sm"
+                disabled={processingOrderIds.has(orderId)}
                 className={`flex-1 font-bold text-white transition-all ${
-                  currentMethod
+                  currentMethod && !processingOrderIds.has(orderId)
                     ? "bg-emerald-600 hover:bg-emerald-700 shadow-sm"
                     : "bg-gray-400 hover:bg-gray-400 cursor-not-allowed opacity-80"
                 }`}
                 onClick={() => handleProcessOrder(order)}
               >
                 <CheckCircle size={16} className="mr-2" />
-                {status === "pending_cashier" ? "Receive & Complete Order" : "Complete & Checkout"}
+                {processingOrderIds.has(orderId) ? "Processing..." : status === "pending_cashier" ? "Receive & Complete Order" : "Complete & Checkout"}
               </Button>
               <Button
                 size="sm"

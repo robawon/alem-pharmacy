@@ -10,12 +10,19 @@ import { currency } from "@/lib/utils";
 export function Cart() {
   const { cart, removeFromCart, checkout } = useStore();
   const [lastReceiptTotal, setLastReceiptTotal] = useState<number | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const total = cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
 
   async function handleCheckout() {
-    const completed = await checkout();
-    if (completed) setLastReceiptTotal(total);
+    if (isProcessing) return;
+    setIsProcessing(true);
+    try {
+      const completed = await checkout();
+      if (completed) setLastReceiptTotal(total);
+    } finally {
+      setIsProcessing(false);
+    }
   }
 
   return (
@@ -57,7 +64,7 @@ export function Cart() {
           <span>{currency(total)}</span>
         </div>
 
-        <Button className="w-full gap-2" disabled={cart.length === 0} onClick={handleCheckout}>
+        <Button className="w-full gap-2" disabled={cart.length === 0 || isProcessing} onClick={handleCheckout}>
           <Printer className="h-4 w-4" />
           Complete Checkout &amp; Print
         </Button>

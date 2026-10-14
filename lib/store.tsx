@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useCallback, useContext, useState, useMemo, useEffect } from "react";
+import React, { createContext, useCallback, useContext, useState, useMemo, useEffect, useRef } from "react";
 import { AuditLogEntry, CartItem, CatalogItem, CurrentUser, CustomerContactInfo, CustomerOrder, DiscountInfo, ParkedCart, Prescription, Role, SaleRecord, StaffProfile, StockBatch, InPersonOrder, InPersonOrderItem } from "./types";
 import { initialAuditLogs, initialCatalog, initialCustomerOrders, initialInventory, initialPrescriptions, initialStaffProfiles } from "./mock-data";
 import { currency, newId } from "./utils";
@@ -109,17 +109,18 @@ const StoreContext = createContext<StoreContextType | undefined>(undefined);
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [dbReady, setDbReady] = useState(false);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
-  const [staffProfiles, setStaffProfiles] = useState<StaffProfile[]>(initialStaffProfiles);
-  const [inventory, setInventory] = useState<StockBatch[]>(initialInventory);
-  const [prescriptions, setPrescriptions] = useState<Prescription[]>(initialPrescriptions);
+  const [staffProfiles, setStaffProfiles] = useState<StaffProfile[]>([]);
+  const [inventory, setInventory] = useState<StockBatch[]>([]);
+  const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(initialAuditLogs);
   const [completedSales, setCompletedSales] = useState<SaleRecord[]>([]);
   const [parkedCarts, setParkedCarts] = useState<ParkedCart[]>([]);
   const [activeDiscount, setActiveDiscount] = useState<DiscountInfo | null>(null);
   const [shiftOpenFloat, setShiftOpenFloat] = useState<number>(100);
-  const [catalog, setCatalog] = useState<CatalogItem[]>(initialCatalog);
-  const [customerOrders, setCustomerOrders] = useState<CustomerOrder[]>(initialCustomerOrders);
+  const [catalog, setCatalog] = useState<CatalogItem[]>([]);
+  const [customerOrders, setCustomerOrders] = useState<CustomerOrder[]>([]);
+  const saleInFlight = useRef(false);
   const [customerCart, setCustomerCart] = useState<CartItem[]>([]);
   const [uploadedPrescriptions, setUploadedPrescriptions] = useState<CustomerPrescriptionUpload[]>([]);
   const [inPersonOrders, setInPersonOrders] = useState<InPersonOrder[]>([]);
@@ -578,6 +579,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [addLog]);
 
   const completeSale = useCallback(async (sale: Omit<SaleRecord, "id" | "timestamp">): Promise<boolean> => {
+    if (saleInFlight.current) return false;
+    saleInFlight.current = true;
     const supabase = createClient();
     let authUserId: string | undefined = undefined;
     try {
@@ -645,6 +648,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setCompletedSales(prev => prev.filter(s => s.id !== record.id));
       alert(`Failed to record sale: ${err.message || err}`);
       return false;
+    } finally {
+      saleInFlight.current = false;
     }
     addLog("COMPLETE_SALE", `Completed sale ${record.id} — ${currency(sale.total)} via ${sale.paymentMethod}`);
     return true;
@@ -1270,7 +1275,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setInventory(prev =>
         prev.map(batch => {
           const soldItem = order.items.find(item =>
-            item.drugName.toLowerCase() === batch.drugName.toLowerCase()
+            item.id === batch.id || item.drugName.toLowerCase() === batch.drugName.toLowerCase()
           );
           if (soldItem) {
             deductInventoryStock(batch.id, soldItem.quantity).catch(console.error);

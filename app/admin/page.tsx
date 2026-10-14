@@ -158,7 +158,13 @@ function AdminDashboardContent() {
     return () => window.clearTimeout(timeoutId);
   }, [dashboardDate]);
 
-  const totalRevenue = completedSales.reduce((sum, entry) => sum + Number(entry.total), 0);
+  const uniqueSales = useMemo(() => {
+    const map = new Map<string, typeof completedSales[number]>();
+    completedSales.forEach(s => { if (!map.has(s.id)) map.set(s.id, s); });
+    return Array.from(map.values());
+  }, [completedSales]);
+
+  const totalRevenue = uniqueSales.reduce((sum, entry) => sum + Number(entry.total), 0);
   const totalUnits = inventory.reduce((sum, item) => sum + item.quantity, 0);
   const unsoldValue = inventory.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
   const criticalAlerts = inventory.filter((item) => item.quantity <= item.safetyThreshold || item.quarantined).length;
@@ -187,7 +193,7 @@ function AdminDashboardContent() {
     const days = getLast7CalendarDays(dashboardDate || undefined);
     const revenueByDay = new Map<string, number>();
 
-    completedSales.forEach((sale) => {
+    uniqueSales.forEach((sale) => {
       const saleDate = new Date(sale.timestamp);
       const dayKey = getLocalDateKey(saleDate);
       revenueByDay.set(dayKey, (revenueByDay.get(dayKey) ?? 0) + Number(sale.total || 0));
@@ -197,11 +203,11 @@ function AdminDashboardContent() {
       day: day.label,
       revenue: revenueByDay.get(day.key) ?? 0,
     }));
-  }, [completedSales, dashboardDate]);
+  }, [uniqueSales, dashboardDate]);
 
   const recentTransactions = useMemo(
     () => {
-      return completedSales
+      return uniqueSales
         .slice()
         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
         .map((sale) => {
@@ -227,7 +233,7 @@ function AdminDashboardContent() {
           };
         });
     },
-    [completedSales, staffProfiles],
+    [uniqueSales, staffProfiles],
   );
 
   const handleRoleChange = (profileId: string, role: Role) => {
