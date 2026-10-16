@@ -227,7 +227,7 @@ function AdminDashboardContent() {
             medicineName: medicineNames,
             pharmacist: pharmacistName,
             cashier: cashierName,
-            time: new Date(sale.timestamp).toLocaleString([], { dateStyle: "short", timeStyle: "short" }),
+            time: new Date(sale.timestamp).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true }),
             amount: Number(sale.total),
             paymentMethod: sale.paymentMethod || "N/A",
           };
