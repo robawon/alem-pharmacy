@@ -1236,7 +1236,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         paymentMethod: paymentMethod,
         amountTendered: amountTendered,
         changeDue: changeDue,
-        timestamp: order.createdAt || now, // Use pharmacist submission time, not cashier completion time
+        timestamp: order.completedAt || order.createdAt || now, // Use cashier completion time as the authoritative timestamp
         salespersonId: creatorId,
         pharmacistName: pharmacistProfile?.name,
         cashierId: cashierId,

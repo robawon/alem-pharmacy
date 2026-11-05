@@ -100,7 +100,7 @@ export default function AdminDashboardPage() {
 }
 
 function AdminDashboardContent() {
-  const { inventory, auditLogs, staffProfiles, completedSales, changeRole, toggleStaffStatus, removeStaff, currentUser } = useStore();
+  const { inventory, auditLogs, staffProfiles, completedSales, inPersonOrders, changeRole, toggleStaffStatus, removeStaff, currentUser } = useStore();
   const [showAddMedicine, setShowAddMedicine] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -205,11 +205,20 @@ function AdminDashboardContent() {
     }));
   }, [uniqueSales, dashboardDate]);
 
+  // Build a lookup: saleId → pharmacy order, so we can use completedAt as the
+  // authoritative display timestamp for pharmacist-originated sales.
+  // This corrects entries whose timestamp was set from the pharmacist's device
+  // clock (which was wrong) rather than the cashier's actual approval time.
+  const orderBySaleId = useMemo(() => {
+    const map = new Map<string, typeof inPersonOrders[number]>();
+    inPersonOrders.forEach(o => { if (o.saleId) map.set(o.saleId, o); });
+    return map;
+  }, [inPersonOrders]);
+
   const recentTransactions = useMemo(
     () => {
       return uniqueSales
         .slice()
-        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
         .map((sale) => {
           const medicineNames = Array.isArray(sale.items) && sale.items.length > 0
             ? sale.items
@@ -227,18 +236,26 @@ function AdminDashboardContent() {
             (sale.cashierId ? staffProfiles.find((s) => s.id === sale.cashierId)?.name : undefined) ||
             "N/A";
 
+          // Use the pharmacy order's completedAt as the display timestamp when
+          // available — it reflects the real cashier-approval time, not the
+          // pharmacist's (potentially wrong) device clock time.
+          const linkedOrder = orderBySaleId.get(sale.id);
+          const displayTimestamp = linkedOrder?.completedAt || sale.timestamp;
+
           return {
             id: sale.id,
             medicineName: medicineNames,
             pharmacist: pharmacistName,
             cashier: cashierName,
-            time: new Date(sale.timestamp).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true }),
+            _sortKey: new Date(displayTimestamp).getTime(),
+            time: new Date(displayTimestamp).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true }),
             amount: Number(sale.total),
             paymentMethod: sale.paymentMethod || "N/A",
           };
-        });
+        })
+        .sort((a, b) => b._sortKey - a._sortKey);
     },
-    [uniqueSales, staffProfiles],
+    [uniqueSales, staffProfiles, orderBySaleId],
   );
 
   const handleRoleChange = (profileId: string, role: Role) => {
