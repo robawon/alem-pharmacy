@@ -212,7 +212,12 @@ function AdminDashboardContent() {
         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
         .map((sale) => {
           const medicineNames = Array.isArray(sale.items) && sale.items.length > 0
-            ? sale.items.map((item: any) => item.drugName || item.name || item.drug_name || "Unknown Item").join(", ")
+            ? sale.items
+                .map((item: any) => {
+                  const name = item.drugName || item.name || item.drug_name || "Unknown Item";
+                  return item.quantity && Number(item.quantity) > 1 ? `${name} (x${item.quantity})` : name;
+                })
+                .join(", ")
             : "N/A";
 
           const pharmacistName = sale.pharmacistName ||
