@@ -68,7 +68,7 @@ import {
 } from "@/components/ui/table";
 import { useStore } from "@/lib/store";
 import type { Role, StaffProfile } from "@/lib/types";
-import { currency } from "@/lib/utils";
+import { currency, formatAddisDateTime } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { getLast7CalendarDays, getLocalDateKey, isDateIn7DayWindow } from "@/lib/date-range";
 
@@ -205,18 +205,25 @@ function AdminDashboardContent() {
     }));
   }, [uniqueSales, dashboardDate]);
 
-  // Build a lookup: saleId → pharmacy order, so we can use completedAt as the
-  // authoritative display timestamp for pharmacist-originated sales.
-  // This corrects entries whose timestamp was set from the pharmacist's device
-  // clock (which was wrong) rather than the cashier's actual approval time.
-  const orderBySaleId = useMemo(() => {
-    const map = new Map<string, typeof inPersonOrders[number]>();
-    inPersonOrders.forEach(o => { if (o.saleId) map.set(o.saleId, o); });
-    return map;
+  // Build a two-level lookup for pharmacy orders:
+  // Level 1: saleId → order  (primary — exact match by sale ID)
+  // Level 2: createdAt → order  (fallback — matches 9 orphaned duplicate sales
+  //          whose pharmacy_orders.sale_id points to a different sale but share
+  //          the same createdAt timestamp as the orphan completed_sale.timestamp)
+  const orderLookup = useMemo(() => {
+    const bySaleId = new Map<string, typeof inPersonOrders[number]>();
+    const byCreatedAt = new Map<string, typeof inPersonOrders[number]>();
+    inPersonOrders.forEach(o => {
+      if (o.saleId) bySaleId.set(o.saleId, o);
+      // Secondary index: orphaned sales share the same timestamp as the order's createdAt
+      if (o.createdAt) byCreatedAt.set(o.createdAt, o);
+    });
+    return { bySaleId, byCreatedAt };
   }, [inPersonOrders]);
 
   const recentTransactions = useMemo(
     () => {
+      const nowMs = Date.now();
       return uniqueSales
         .slice()
         .map((sale) => {
@@ -236,11 +243,20 @@ function AdminDashboardContent() {
             (sale.cashierId ? staffProfiles.find((s) => s.id === sale.cashierId)?.name : undefined) ||
             "N/A";
 
-          // Use the pharmacy order's completedAt as the display timestamp when
-          // available — it reflects the real cashier-approval time, not the
-          // pharmacist's (potentially wrong) device clock time.
-          const linkedOrder = orderBySaleId.get(sale.id);
-          const displayTimestamp = linkedOrder?.completedAt || sale.timestamp;
+          // Primary lookup: match by sale ID (linked by cashier completing the order)
+          // Fallback lookup: match orphaned duplicate sales by their shared createdAt timestamp
+          const linkedOrder =
+            orderLookup.bySaleId.get(sale.id) ||
+            orderLookup.byCreatedAt.get(sale.timestamp);
+
+          // Only substitute completedAt when the stored sale timestamp is in the
+          // future (bad data written by pharmacist's wrong device clock).
+          // This preserves any genuinely future-dated sales if they ever exist.
+          const saleTimeMs = new Date(sale.timestamp).getTime();
+          const displayTimestamp =
+            saleTimeMs > nowMs && linkedOrder?.completedAt
+              ? linkedOrder.completedAt
+              : sale.timestamp;
 
           return {
             id: sale.id,
@@ -248,14 +264,14 @@ function AdminDashboardContent() {
             pharmacist: pharmacistName,
             cashier: cashierName,
             _sortKey: new Date(displayTimestamp).getTime(),
-            time: new Date(displayTimestamp).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true }),
+            time: formatAddisDateTime(displayTimestamp),
             amount: Number(sale.total),
             paymentMethod: sale.paymentMethod || "N/A",
           };
         })
         .sort((a, b) => b._sortKey - a._sortKey);
     },
-    [uniqueSales, staffProfiles, orderBySaleId],
+    [uniqueSales, staffProfiles, orderLookup],
   );
 
   const handleRoleChange = (profileId: string, role: Role) => {

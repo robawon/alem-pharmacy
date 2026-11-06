@@ -1124,13 +1124,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     // Optimistic local update — Supabase realtime will sync to all other devices
     setInPersonOrders(prev => [order, ...prev]);
     // Persist to Supabase pharmacy_orders so cashier sees it on any device
-    const { error } = await insertPharmacyOrder(order);
+    const { error, created_at: dbCreatedAt } = await insertPharmacyOrder(order);
     if (error) {
       // Roll back optimistic update so pharmacist knows it failed
       setInPersonOrders(prev => prev.filter(o => o.id !== orderId));
       console.error("createInPersonOrder: Supabase insert failed:", error);
       alert(`Failed to send order to cashier: ${error}`);
       return false;
+    }
+    if (dbCreatedAt) {
+      setInPersonOrders(prev => prev.map(o => o.id === orderId ? { ...o, createdAt: dbCreatedAt } : o));
     }
     addLog("IN_PERSON_ORDER_CREATED", `Pharmacist created order ${orderId} for ${patientName} — ${items.length} items, ${currency(order.total)}`);
     return true;
@@ -1236,7 +1239,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         paymentMethod: paymentMethod,
         amountTendered: amountTendered,
         changeDue: changeDue,
-        timestamp: order.completedAt || order.createdAt || now, // Use cashier completion time as the authoritative timestamp
+        timestamp: order.createdAt || now, // Preserve original pharmacist submission timestamp
         salespersonId: creatorId,
         pharmacistName: pharmacistProfile?.name,
         cashierId: cashierId,

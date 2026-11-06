@@ -251,17 +251,44 @@ export function toInPersonOrder(r: any): InPersonOrder {
 }
 
 export async function fetchPharmacyOrders(): Promise<InPersonOrder[]> {
-  const { data, error } = await supabase
-    .from("pharmacy_orders")
-    .select("*")
-    .order("created_at", { ascending: false });
+  const allRows: any[] = [];
+  let page = 0;
+  const pageSize = 1000;
+  let hasMore = true;
 
-  if (error) {
-    console.error("fetchPharmacyOrders:", error.message);
-    return [];
+  while (hasMore) {
+    const { data, error } = await supabase
+      .from("pharmacy_orders")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .range(page * pageSize, (page + 1) * pageSize - 1);
+
+    if (error) {
+      console.error("fetchPharmacyOrders Error:", {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+      });
+      if (allRows.length === 0) {
+        return [];
+      }
+      break;
+    }
+
+    if (data && data.length > 0) {
+      allRows.push(...data);
+      if (data.length < pageSize) {
+        hasMore = false;
+      } else {
+        page++;
+      }
+    } else {
+      hasMore = false;
+    }
   }
 
-  return (data ?? []).map(toInPersonOrder);
+  return allRows.map(toInPersonOrder);
 }
 
 export async function fetchPharmacyOrderById(orderId: string): Promise<InPersonOrder | null> {
@@ -275,10 +302,10 @@ export async function fetchPharmacyOrderById(orderId: string): Promise<InPersonO
   return toInPersonOrder(data);
 }
 
-export async function insertPharmacyOrder(order: InPersonOrder): Promise<{ error: string | null }> {
+export async function insertPharmacyOrder(order: InPersonOrder): Promise<{ error: string | null; created_at?: string }> {
   // Client-side Supabase call: verify Supabase Dashboard has an INSERT RLS policy
   // for pharmacy_orders that permits authenticated users to write rows.
-  const payload = {
+  const payload: Record<string, any> = {
     id: order.id,
     patient_name: order.patientName,
     items: order.items,          // JSONB — no serialisation needed
@@ -287,10 +314,14 @@ export async function insertPharmacyOrder(order: InPersonOrder): Promise<{ error
     total: order.total,
     status: order.status,        // 'pending_cashier' — valid in pharmacy_orders
     created_by: order.createdBy,
-    created_at: order.createdAt,
     pharmacist_viewed: order.pharmacistViewed ?? false,
   };
-  const { error } = await supabase.from("pharmacy_orders").insert(payload);
+  // If order.createdAt is provided and not in the future, retain it; otherwise let Supabase default to now()
+  if (order.createdAt && new Date(order.createdAt).getTime() <= Date.now() + 60000) {
+    payload.created_at = order.createdAt;
+  }
+
+  const { data, error } = await supabase.from("pharmacy_orders").insert(payload).select("created_at");
   if (error) {
     const errorDetails = [
       `message: ${error.message}`,
@@ -301,7 +332,7 @@ export async function insertPharmacyOrder(order: InPersonOrder): Promise<{ error
     console.error("insertPharmacyOrder failed:", errorDetails, { error, payload });
     return { error: errorDetails };
   }
-  return { error: null };
+  return { error: null, created_at: data?.[0]?.created_at };
 }
 
 export async function updatePharmacyOrder(
