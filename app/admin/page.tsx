@@ -189,6 +189,54 @@ function AdminDashboardContent() {
     });
   }, [searchTerm, staffProfiles]);
 
+  // ── Today's Addis Ababa Sales Statistics (Strictly evaluated in Africa/Addis_Ababa) ──
+  const todayStats = useMemo(() => {
+    const todayKey = getLocalDateKey(dashboardDate || new Date());
+    const pharmacistStaffIds = new Set(
+      staffProfiles.filter((s) => s.role === "pharmacist").map((s) => s.id)
+    );
+    const cashierStaffIds = new Set(
+      staffProfiles.filter((s) => s.role === "cashier").map((s) => s.id)
+    );
+
+    let todaySalesCount = 0;
+    let todayRevenue = 0;
+    let todayMedsSold = 0;
+    let pharmacistMedsSold = 0;
+    let cashierMedsSold = 0;
+
+    uniqueSales.forEach((sale) => {
+      const saleKey = getLocalDateKey(sale.timestamp);
+      if (saleKey !== todayKey) return;
+
+      todaySalesCount += 1;
+      todayRevenue += Number(sale.total || 0);
+
+      const items = Array.isArray(sale.items) ? sale.items : [];
+      const saleQty = items.reduce((sum: number, it: any) => sum + (Number(it.quantity) || 1), 0);
+      todayMedsSold += saleQty;
+
+      const isPharmacistSale =
+        (sale.salespersonId && pharmacistStaffIds.has(sale.salespersonId)) ||
+        Boolean(sale.pharmacistName);
+
+      if (isPharmacistSale) {
+        pharmacistMedsSold += saleQty;
+      } else {
+        cashierMedsSold += saleQty;
+      }
+    });
+
+    return {
+      todayKey,
+      todaySalesCount,
+      todayRevenue,
+      todayMedsSold,
+      pharmacistMedsSold,
+      cashierMedsSold,
+    };
+  }, [uniqueSales, staffProfiles, dashboardDate]);
+
   const weeklyRevenue = useMemo(() => {
     const days = getLast7CalendarDays(dashboardDate || undefined);
     const revenueByDay = new Map<string, number>();
@@ -326,6 +374,18 @@ function AdminDashboardContent() {
           href="/admin/finance"
         />
         <KpiCard
+          label="Today's Sales (Addis)"
+          value={currency(todayStats.todayRevenue)}
+          subtext={`${todayStats.todaySalesCount} orders • ${todayStats.todayMedsSold} meds sold`}
+          badgeText="Today"
+          badgeVariant="info"
+          icon={Activity}
+          iconBg="bg-sky-500/20 text-sky-300 border-sky-500/30"
+          gradient="from-sky-950/50 via-slate-900/80 to-slate-900/90"
+          glowClass="shadow-lg shadow-sky-500/10"
+          href="/admin/finance"
+        />
+        <KpiCard
           label="Medications in Stock"
           value={inventory.length.toLocaleString()}
           subtext={`Total Units: ${totalUnits.toLocaleString()}`}
@@ -348,18 +408,6 @@ function AdminDashboardContent() {
           gradient="from-purple-950/50 via-slate-900/80 to-slate-900/90"
           glowClass="shadow-lg shadow-purple-500/10"
           href="/inventory"
-        />
-        <KpiCard
-          label="Critical Alerts"
-          value={criticalAlerts}
-          subtext="Low stock or quarantined batches"
-          badgeText="Action Needed"
-          badgeVariant="warning"
-          icon={AlertTriangle}
-          iconBg="bg-amber-500/20 text-amber-300 border-amber-500/30"
-          gradient="from-amber-950/50 via-slate-900/80 to-slate-900/90"
-          glowClass="shadow-lg shadow-amber-500/10"
-          href="/inventory/expiry"
         />
       </div>
 

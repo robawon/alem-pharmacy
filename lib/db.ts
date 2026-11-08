@@ -552,45 +552,78 @@ export async function restoreCatalogStock(catalogId: string, amount: number) {
   }
 }
 
-export async function deductInventoryStock(batchId: string, amount: number) {
+export async function deductInventoryStock(batchId: string, amount: number): Promise<{ success: boolean; newQuantity?: number; error?: string }> {
+  // Try RPC first if available
   const { error: rpcError } = await supabase.rpc("increment_inventory_stock", {
     batch_id: batchId,
     amount: -amount,
   });
 
-  if (rpcError) {
-    const { data: current } = await supabase
-      .from("inventory")
-      .select("quantity")
-      .eq("id", batchId)
-      .single();
-    if (current) {
-      const newQty = Math.max(0, (current.quantity || 0) - amount);
-      await supabase.from("inventory").update({ quantity: newQty }).eq("id", batchId);
-    }
+  if (!rpcError) {
+    const { data: refreshed } = await supabase.from("inventory").select("quantity").eq("id", batchId).single();
+    return { success: true, newQuantity: refreshed?.quantity };
   }
+
+  // Robust direct fallback: fetch current stock, verify sufficient, update with gte guard
+  const { data: current, error: fetchErr } = await supabase
+    .from("inventory")
+    .select("quantity")
+    .eq("id", batchId)
+    .single();
+
+  if (fetchErr || !current) {
+    return { success: false, error: fetchErr?.message || "Batch not found" };
+  }
+
+  if (current.quantity < amount) {
+    return { success: false, error: `Insufficient stock: only ${current.quantity} available, ${amount} requested` };
+  }
+
+  const newQty = Math.max(0, current.quantity - amount);
+  const { data: updated, error: updateErr } = await supabase
+    .from("inventory")
+    .update({ quantity: newQty })
+    .eq("id", batchId)
+    .gte("quantity", amount)
+    .select("quantity");
+
+  if (updateErr) {
+    return { success: false, error: updateErr.message };
+  }
+
+  if (!updated || updated.length === 0) {
+    return { success: false, error: "Concurrent sale prevented stock deduction — insufficient stock remaining." };
+  }
+
+  return { success: true, newQuantity: updated[0].quantity };
 }
 
-export async function deductCatalogStock(catalogId: string, amount: number) {
+export async function deductCatalogStock(catalogId: string, amount: number): Promise<{ success: boolean; newQuantity?: number }> {
   const { error: rpcError } = await supabase.rpc("increment_catalog_stock", {
     catalog_id: catalogId,
     amount: -amount,
   });
 
-  if (rpcError) {
-    const { data: current } = await supabase
-      .from("catalog_items")
-      .select("quantity")
-      .eq("id", catalogId)
-      .single();
-    if (current) {
-      const newQty = Math.max(0, (current.quantity || 0) - amount);
-      await supabase
-        .from("catalog_items")
-        .update({ quantity: newQty, in_stock: newQty > 0 })
-        .eq("id", catalogId);
-    }
+  if (!rpcError) {
+    return { success: true };
   }
+
+  const { data: current } = await supabase
+    .from("catalog_items")
+    .select("quantity")
+    .eq("id", catalogId)
+    .single();
+
+  if (current) {
+    const newQty = Math.max(0, (current.quantity || 0) - amount);
+    await supabase
+      .from("catalog_items")
+      .update({ quantity: newQty, in_stock: newQty > 0 })
+      .eq("id", catalogId);
+    return { success: true, newQuantity: newQty };
+  }
+
+  return { success: false };
 }
 
 export async function deleteInventoryBatch(id: string) {
@@ -734,6 +767,17 @@ export async function updateCustomerOrderStatus(id: string, status: string) {
   if (error) console.error("updateCustomerOrderStatus:", error.message);
 }
 
+export async function fetchCompletedSaleById(saleId: string): Promise<SaleRecord | null> {
+  const { data, error } = await supabase
+    .from("completed_sales")
+    .select("*")
+    .eq("id", saleId)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return toSaleRecord(data);
+}
+
 export async function insertCompletedSale(sale: SaleRecord) {
   let authUserId: string | null = null;
   try {
@@ -745,12 +789,28 @@ export async function insertCompletedSale(sale: SaleRecord) {
     console.warn("supabase.auth.getUser call in insertCompletedSale:", err);
   }
 
+  // Idempotency check: if sale already confirmed in Supabase, return existing record
+  const existingSale = await fetchCompletedSaleById(sale.id);
+  if (existingSale) {
+    console.log("[insertCompletedSale] Sale already committed in DB:", sale.id);
+    return existingSale;
+  }
+
   const validPaymentMethod = ["cash", "card", "mobile", "other"].includes(sale.paymentMethod)
     ? sale.paymentMethod
     : "cash";
 
-  const cashierId = sale.cashierId || authUserId || "u_cash1";
-  const salespersonId = sale.salespersonId || authUserId || cashierId;
+  // Validate foreign keys against staff_profiles to avoid FK 23503 failures
+  let resolvedCashierId: string | null = sale.cashierId || authUserId || null;
+  let resolvedSalespersonId: string | null = sale.salespersonId || authUserId || resolvedCashierId;
+
+  // Never use synthetic placeholder IDs that do not exist in staff_profiles
+  if (resolvedCashierId === "u_cash1" || resolvedCashierId?.startsWith("u_")) {
+    resolvedCashierId = null;
+  }
+  if (resolvedSalespersonId === "u_cash1" || resolvedSalespersonId?.startsWith("u_")) {
+    resolvedSalespersonId = null;
+  }
 
   const payload = {
     id: sale.id,
@@ -764,8 +824,8 @@ export async function insertCompletedSale(sale: SaleRecord) {
     amount_tendered: Number(sale.amountTendered) || 0,
     change_due: Number(sale.changeDue) || 0,
     timestamp: sale.timestamp || new Date().toISOString(),
-    salesperson_id: salespersonId,
-    cashier_id: cashierId,
+    salesperson_id: resolvedSalespersonId,
+    cashier_id: resolvedCashierId,
   };
 
   const { data, error } = await supabase
@@ -774,6 +834,7 @@ export async function insertCompletedSale(sale: SaleRecord) {
     .select();
 
   if (error) {
+    // If FK constraint violation occurs, retry immediately with null staff IDs
     if (error.code === "23503") {
       const fallbackPayload = {
         ...payload,
@@ -785,9 +846,15 @@ export async function insertCompletedSale(sale: SaleRecord) {
         .insert(fallbackPayload)
         .select();
 
-      if (!fbError) {
-        return fbData;
+      if (!fbError && fbData && fbData.length > 0) {
+        return toSaleRecord(fbData[0]);
       }
+    }
+
+    // If duplicate primary key (race condition or retried request), fetch confirmed record
+    if (error.code === "23505" || error.message?.includes("duplicate")) {
+      const existing = await fetchCompletedSaleById(sale.id);
+      if (existing) return existing;
     }
 
     console.error("insertCompletedSale failed:", {

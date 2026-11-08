@@ -5,29 +5,46 @@ export interface CalendarDay {
   end: Date;
 }
 
-export function getLocalDateKey(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+const ADDIS_TIMEZONE = "Africa/Addis_Ababa";
+
+/**
+ * Returns YYYY-MM-DD date key in the official pharmacy timezone (Africa/Addis_Ababa, UTC+3).
+ */
+export function getLocalDateKey(date: Date | string): string {
+  const d = typeof date === "string" ? new Date(date) : date;
+  if (isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: ADDIS_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
 }
 
+/**
+ * Generates the last 7 calendar days aligned to Africa/Addis_Ababa midnight boundaries.
+ */
 export function getLast7CalendarDays(referenceDate = new Date()): CalendarDay[] {
-  const today = new Date(
-    referenceDate.getFullYear(),
-    referenceDate.getMonth(),
-    referenceDate.getDate(),
-  );
+  const labelFormatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: ADDIS_TIMEZONE,
+    month: "short",
+    day: "numeric",
+  });
+
+  const addisOffsetMs = 3 * 60 * 60 * 1000;
+  const addisTime = new Date(referenceDate.getTime() + addisOffsetMs);
+  const year = addisTime.getUTCFullYear();
+  const month = addisTime.getUTCMonth();
+  const date = addisTime.getUTCDate();
+  const todayMidnightUTC = new Date(Date.UTC(year, month, date) - addisOffsetMs);
 
   return Array.from({ length: 7 }, (_, index) => {
-    const start = new Date(today);
-    start.setDate(today.getDate() - (6 - index));
-    const end = new Date(start);
-    end.setDate(start.getDate() + 1);
+    const start = new Date(todayMidnightUTC.getTime() - (6 - index) * 86400000);
+    const end = new Date(start.getTime() + 86400000);
 
     return {
       key: getLocalDateKey(start),
-      label: start.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      label: labelFormatter.format(start),
       start,
       end,
     };
@@ -42,6 +59,9 @@ export function isDateIn7DayWindow(saleDate: Date, days: CalendarDay[]): boolean
   return time >= windowStart && time < windowEnd;
 }
 
+/**
+ * Accurately determines if a timestamp falls within today's calendar day in Africa/Addis_Ababa.
+ */
 export function isToday(dateInput?: string | Date | null): boolean {
   if (!dateInput) return false;
   const d = typeof dateInput === "string" ? new Date(dateInput) : dateInput;

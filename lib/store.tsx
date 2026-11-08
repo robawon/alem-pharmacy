@@ -15,14 +15,16 @@ import {
   insertStaffProfile, updateStaffRole, updateStaffStatus, deleteStaffProfile, updateMedicineRecord,
   updateStaffProfile, restoreInventoryStock, restoreCatalogStock, deductInventoryStock, deductCatalogStock,
   updateCatalogItem, fetchPharmacyOrders, fetchPharmacyOrderById, insertPharmacyOrder, updatePharmacyOrderStatus, getPharmacyOrderSaleId,
-  updateCustomerOrderViewed, updatePharmacyOrderViewed, toSaleRecord,
+  updateCustomerOrderViewed, updatePharmacyOrderViewed, toSaleRecord, fetchCompletedSaleById,
 } from "./db";
 
 import { calculateTaxStatus } from "./tax";
 
-// Note: in-person orders are persisted via the dedicated `pharmacy_orders` Supabase table.
-// localStorage is NOT used for cross-device communication.
-// Supabase Realtime (pharmacy_orders table) is the single source of truth.
+const NETWORK_SALE_ERROR_MSG =
+  "Network connection is unstable. Your sale could not be confirmed or saved. Please check your internet connection and retry. Do not start a new sale until the previous attempt has been checked.";
+
+const NETWORK_MEDICINE_ERROR_MSG =
+  "Network connection is unstable. The medicine was not confirmed as saved. Please check your internet connection and retry adding the medicine.";
 
 /** A prescription document uploaded by a customer through the portal */
 export interface CustomerPrescriptionUpload {
@@ -244,26 +246,47 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       })
       .subscribe();
 
-    // Fallback polling loop (every 60 seconds) to ensure Admin Dashboard stays in sync with DB
+    // Fallback polling loop (every 30 seconds) to ensure Admin Dashboard stays in sync with DB
     const pollInterval = setInterval(() => {
       fetchCompletedSales().then((fetched) => {
-        if (!fetched) return;
+        if (!fetched || fetched.length === 0) return;
         setCompletedSales((prev) => {
-          // DB is source of truth — use fetched as the base.
-          // Keep any local records that the DB might not have returned yet (e.g. just inserted).
           const map = new Map<string, SaleRecord>();
           fetched.forEach((s) => map.set(s.id, s));
-          // Do NOT preserve prev records that contradict DB — DB wins.
           return Array.from(map.values()).sort(
             (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
           );
         });
       }).catch(console.error);
-    }, 60000);
+
+      fetchPharmacyOrders().then((orders) => {
+        if (!orders || orders.length === 0) return;
+        setInPersonOrders(orders);
+      }).catch(console.error);
+
+      fetchInventory().then((inv) => {
+        if (!inv || inv.length === 0) return;
+        setInventory(inv);
+      }).catch(console.error);
+    }, 30000);
+
+    // Auto-reconnect and re-sync when network reconnects (offline -> online)
+    const handleOnline = () => {
+      console.log("[StoreProvider] Device online — reconciling latest Supabase state...");
+      Promise.all([
+        fetchCompletedSales().then(setCompletedSales),
+        fetchPharmacyOrders().then(setInPersonOrders),
+        fetchInventory().then(setInventory),
+        fetchStaffProfiles().then(setStaffProfiles),
+      ]).catch(console.error);
+    };
+
+    window.addEventListener("online", handleOnline);
 
     return () => {
       supabase.removeChannel(channel);
       clearInterval(pollInterval);
+      window.removeEventListener("online", handleOnline);
     };
   }, []);
 
@@ -508,7 +531,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setInventory(previousInventory);
       setCatalog(previousCatalog);
       console.error("Failed to receive shipment:", error);
-      alert(`Could not add medicine: ${error.message || error}`);
+      alert(NETWORK_MEDICINE_ERROR_MSG);
     }
   }, [addLog, inventory, catalog]);
 
@@ -592,67 +615,89 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       console.warn("completeSale auth.getUser error:", e);
     }
 
-    const cId = sale.cashierId || authUserId || currentUser?.id || "u_cash1";
-    const cName = sale.cashierName || staffProfiles.find(s => s.id === cId)?.name || currentUser?.name || "Yonas Girma";
+    const cId = sale.cashierId || authUserId || currentUser?.id || undefined;
+    const cName = sale.cashierName || (cId ? staffProfiles.find(s => s.id === cId)?.name : undefined) || currentUser?.name || "Cashier";
     const sId = sale.salespersonId || (currentUser?.role === "pharmacist" ? (currentUser?.id || authUserId) : undefined) || cId;
     const pName = sale.pharmacistName || (sId ? staffProfiles.find(s => s.id === sId)?.name : undefined) || cName;
+
+    // Stable sale ID for idempotency protection across retries
+    const saleId = newId("sale");
     const record: SaleRecord = {
       ...sale,
-      id: newId("sale"),
+      id: saleId,
       timestamp: new Date().toISOString(),
       salespersonId: sId,
       pharmacistName: pName,
       cashierId: cId,
       cashierName: cName,
     };
-    setCompletedSales(prev => {
-      const map = new Map<string, SaleRecord>();
-      [record, ...prev].forEach(s => map.set(s.id, s));
-      return Array.from(map.values()).sort(
-        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-      );
-    });
-    setCart([]);
-    setActiveDiscount(null);
 
-    // Deduct stock from inventory
-    setInventory(prev =>
-      prev.map(batch => {
-        const soldItem = sale.items.find(item => item.batchId === batch.id);
-        if (soldItem) {
-          deductInventoryStock(batch.id, soldItem.quantity).catch(console.error);
-          return { ...batch, quantity: Math.max(0, batch.quantity - soldItem.quantity) };
-        }
-        return batch;
-      })
-    );
-    // Also update catalog quantities in sync
-    setCatalog(prev =>
-      prev.map(cat => {
-        const soldItem = sale.items.find(item =>
-          item.drugName.toLowerCase() === cat.drugName.toLowerCase()
-        );
-        if (soldItem) {
-          deductCatalogStock(cat.id, soldItem.quantity).catch(console.error);
-          const newQty = Math.max(0, cat.quantity - soldItem.quantity);
-          return { ...cat, quantity: newQty, inStock: newQty > 0 };
-        }
-        return cat;
-      })
-    );
-
+    // ── ATOMIC STEP 1: Verify & deduct stock in Supabase first with sufficiency guard ──
+    const deductedBatches: { batchId: string; amount: number }[] = [];
     try {
-      await insertCompletedSale(record);
+      for (const item of sale.items) {
+        if (item.batchId && item.quantity > 0) {
+          const deductRes = await deductInventoryStock(item.batchId, item.quantity);
+          if (!deductRes.success) {
+            throw new Error(deductRes.error || `Insufficient stock for ${item.drugName}`);
+          }
+          deductedBatches.push({ batchId: item.batchId, amount: item.quantity });
+        }
+      }
+
+      // Also deduct from catalog stock
+      for (const item of sale.items) {
+        if (item.batchId) {
+          await deductCatalogStock(item.batchId, item.quantity).catch(console.warn);
+        }
+      }
+
+      // ── ATOMIC STEP 2: Save completed sale to Supabase ──
+      const confirmedSale = await insertCompletedSale(record);
+
+      // ── CONFIRMED SUCCESS: Update local UI state ONLY after Supabase confirmation ──
+      setCompletedSales(prev => {
+        const map = new Map<string, SaleRecord>();
+        [confirmedSale, ...prev].forEach(s => map.set(s.id, s));
+        return Array.from(map.values()).sort(
+          (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        );
+      });
+
+      // Update local inventory state to match confirmed DB deduction
+      setInventory(prev =>
+        prev.map(batch => {
+          const sold = deductedBatches.find(d => d.batchId === batch.id);
+          return sold ? { ...batch, quantity: Math.max(0, batch.quantity - sold.amount) } : batch;
+        })
+      );
+
+      setCatalog(prev =>
+        prev.map(cat => {
+          const soldItem = sale.items.find(item => item.drugName.toLowerCase() === cat.drugName.toLowerCase());
+          if (soldItem) {
+            const newQty = Math.max(0, cat.quantity - soldItem.quantity);
+            return { ...cat, quantity: newQty, inStock: newQty > 0 };
+          }
+          return cat;
+        })
+      );
+
+      setCart([]);
+      setActiveDiscount(null);
+      addLog("COMPLETE_SALE", `Completed sale ${record.id} — ${currency(sale.total)} via ${sale.paymentMethod}`);
+      return true;
     } catch (err: any) {
-      console.error("completeSale failed:", err);
-      setCompletedSales(prev => prev.filter(s => s.id !== record.id));
-      alert(`Failed to record sale: ${err.message || err}`);
+      console.error("[completeSale] Transaction failed, rolling back:", err);
+      // Rollback any stock deducted prior to failure
+      for (const batch of deductedBatches) {
+        await restoreInventoryStock(batch.batchId, batch.amount).catch(console.error);
+      }
+      alert(NETWORK_SALE_ERROR_MSG);
       return false;
     } finally {
       saleInFlight.current = false;
     }
-    addLog("COMPLETE_SALE", `Completed sale ${record.id} — ${currency(sale.total)} via ${sale.paymentMethod}`);
-    return true;
   }, [addLog, currentUser, staffProfiles]);
 
   const cancelSale = useCallback(() => {
@@ -678,57 +723,85 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const checkout = useCallback(async (): Promise<boolean> => {
     if (cart.length === 0) return false;
     const total = cart.reduce((acc, item) => acc + item.unitPrice * item.quantity, 0);
+    const saleId = newId("sale");
     const record: SaleRecord = {
-      id: newId("sale"), items: cart, subtotal: total, discount: activeDiscount,
-      discountAmount: 0, tax: 0, total, paymentMethod: "cash",
-      amountTendered: total, changeDue: 0, timestamp: new Date().toISOString(),
+      id: saleId,
+      items: cart,
+      subtotal: total,
+      discount: activeDiscount,
+      discountAmount: 0,
+      tax: 0,
+      total,
+      paymentMethod: "cash",
+      amountTendered: total,
+      changeDue: 0,
+      timestamp: new Date().toISOString(),
       salespersonId: currentUser?.id,
+      cashierId: currentUser?.id,
+      cashierName: currentUser?.name,
     };
-    setCompletedSales(prev => {
-      const map = new Map<string, SaleRecord>();
-      [record, ...prev].forEach(s => map.set(s.id, s));
-      return Array.from(map.values()).sort(
-        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-      );
-    });
-    setCart([]);
 
+    // ── ATOMIC STEP 1: Verify & deduct stock in Supabase first ──
+    const deductedBatches: { batchId: string; amount: number }[] = [];
     try {
-      await insertCompletedSale(record);
+      for (const item of cart) {
+        if (item.batchId && item.quantity > 0) {
+          const deductRes = await deductInventoryStock(item.batchId, item.quantity);
+          if (!deductRes.success) {
+            throw new Error(deductRes.error || `Insufficient stock for ${item.drugName}`);
+          }
+          deductedBatches.push({ batchId: item.batchId, amount: item.quantity });
+        }
+      }
+
+      for (const item of cart) {
+        if (item.batchId) {
+          await deductCatalogStock(item.batchId, item.quantity).catch(console.warn);
+        }
+      }
+
+      // ── ATOMIC STEP 2: Save completed sale to Supabase ──
+      const confirmedSale = await insertCompletedSale(record);
+
+      // ── CONFIRMED SUCCESS: Update local UI state ONLY after Supabase confirmation ──
+      setCompletedSales(prev => {
+        const map = new Map<string, SaleRecord>();
+        [confirmedSale, ...prev].forEach(s => map.set(s.id, s));
+        return Array.from(map.values()).sort(
+          (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        );
+      });
+
+      setInventory(prev =>
+        prev.map(batch => {
+          const sold = deductedBatches.find(d => d.batchId === batch.id);
+          return sold ? { ...batch, quantity: Math.max(0, batch.quantity - sold.amount) } : batch;
+        })
+      );
+
+      setCatalog(prev =>
+        prev.map(cat => {
+          const soldItem = cart.find(item => item.drugName.toLowerCase() === cat.drugName.toLowerCase());
+          if (soldItem) {
+            const newQty = Math.max(0, cat.quantity - soldItem.quantity);
+            return { ...cat, quantity: newQty, inStock: newQty > 0 };
+          }
+          return cat;
+        })
+      );
+
+      setCart([]);
+      setActiveDiscount(null);
+      addLog("CHECKOUT", `Quick checkout — ${currency(total)}`);
+      return true;
     } catch (err: any) {
-      console.error("checkout failed:", err);
-      setCompletedSales(prev => prev.filter(s => s.id !== record.id));
-      alert(`Checkout failed to save: ${err.message || err}`);
+      console.error("[checkout] Transaction failed, rolling back:", err);
+      for (const batch of deductedBatches) {
+        await restoreInventoryStock(batch.batchId, batch.amount).catch(console.error);
+      }
+      alert(NETWORK_SALE_ERROR_MSG);
       return false;
     }
-
-    // Deduct stock
-    setInventory(prev =>
-      prev.map(batch => {
-        const soldItem = cart.find(item => item.batchId === batch.id);
-        if (soldItem) {
-          deductInventoryStock(batch.id, soldItem.quantity).catch(console.error);
-          return { ...batch, quantity: Math.max(0, batch.quantity - soldItem.quantity) };
-        }
-        return batch;
-      })
-    );
-    setCatalog(prev =>
-      prev.map(cat => {
-        const soldItem = cart.find(item =>
-          item.drugName.toLowerCase() === cat.drugName.toLowerCase()
-        );
-        if (soldItem) {
-          deductCatalogStock(cat.id, soldItem.quantity).catch(console.error);
-          const newQty = Math.max(0, cat.quantity - soldItem.quantity);
-          return { ...cat, quantity: newQty, inStock: newQty > 0 };
-        }
-        return cat;
-      })
-    );
-
-    addLog("CHECKOUT", `Quick checkout — ${currency(total)}`);
-    return true;
   }, [cart, activeDiscount, addLog, currentUser]);
 
   // ── Customer / Portal ────────────────────────────────────────────────────
@@ -1024,7 +1097,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setCatalog(previousCatalog);
       setInventory(previousInventory);
       console.error("Failed to add medicine:", error);
-      alert(`Could not add medicine: ${error.message || error}`);
+      alert(NETWORK_MEDICINE_ERROR_MSG);
     }
   }, [addLog, catalog, inventory]);
 
@@ -1163,149 +1236,133 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     paymentDetails?: { paymentMethod: "cash" | "card" | "mobile" | "other"; amountTendered?: number; changeDue?: number }
   ): Promise<boolean> => {
     const order = inPersonOrders.find(o => o.id === orderId);
-    const now = new Date().toISOString();
+    if (!order) {
+      alert("Order not found or already processed.");
+      return false;
+    }
 
+    const now = new Date().toISOString();
     const paymentMethod = paymentDetails?.paymentMethod || "cash";
     const amountTendered = paymentDetails?.amountTendered !== undefined ? paymentDetails.amountTendered : (order?.total || 0);
     const changeDue = paymentDetails?.changeDue !== undefined ? paymentDetails.changeDue : 0;
 
-    console.log("[completeInPersonOrder] Starting completion for order:", orderId, {
-      orderStatus: order?.status,
-      paymentMethod,
-      amountTendered,
-      changeDue,
-      total: order?.total,
-    });
-
-    // ── Step 1: Check if the order already has a sale_id (idempotency guard) ──
-    const existingSaleId = order?.saleId ?? null;
+    // ── Step 1: Idempotency check ──
+    const existingSaleId = order.saleId ?? null;
     if (existingSaleId) {
-      console.log("[completeInPersonOrder] Order already has sale_id:", existingSaleId, "- marking as completed without re-inserting.");
-      setInPersonOrders(prev => prev.map(o => o.id === orderId ? {
-        ...o, status: "completed", completedAt: now, saleId: existingSaleId,
-      } : o));
-      addLog("IN_PERSON_ORDER_COMPLETED", `Order ${orderId} already completed — Receipt ${existingSaleId}`);
-      return true;
+      // Check if sale already confirmed in DB
+      const existingSale = await fetchCompletedSaleById(existingSaleId).catch(() => null);
+      if (existingSale) {
+        setInPersonOrders(prev => prev.map(o => o.id === orderId ? {
+          ...o, status: "completed", completedAt: o.completedAt || now, saleId: existingSaleId,
+        } : o));
+        addLog("IN_PERSON_ORDER_COMPLETED", `Order ${orderId} already completed — Receipt ${existingSaleId}`);
+        return true;
+      }
     }
 
-    // ── Step 2: Generate a new sale ID and atomically claim the order ──
-    const completedSaleId = newId("sale");
-
-    const { error: updateErr } = await updatePharmacyOrderStatus(orderId, "completed", {
-      completedAt: now,
-      saleId: completedSaleId,
-    });
-
-    if (updateErr) {
-      console.error("[completeInPersonOrder] Failed to update pharmacy_orders status:", updateErr);
-      // Attempt to re-fetch to check actual DB state before returning false
-      try {
-        const freshOrder = await fetchPharmacyOrderById(orderId);
-        if (freshOrder?.status === "completed" && freshOrder.saleId) {
-          console.log("[completeInPersonOrder] DB shows already completed with sale_id:", freshOrder.saleId);
-          setInPersonOrders(prev => prev.map(o => o.id === orderId ? {
-            ...o, status: "completed", completedAt: freshOrder.completedAt || now, saleId: freshOrder.saleId,
-          } : o));
-          addLog("IN_PERSON_ORDER_COMPLETED", `Order ${orderId} already completed — Receipt ${freshOrder.saleId}`);
-          return true;
-        }
-      } catch (_) { /* ignore */ }
-    }
-
-    // ── Step 3: Update local state optimistically ──
-    setInPersonOrders(prev => prev.map(o => o.id === orderId ? {
-      ...o, status: "completed", completedAt: now, saleId: completedSaleId,
-    } : o));
-
-    const creatorId = order?.createdBy || undefined;
+    const targetSaleId = existingSaleId || newId("sale");
+    const creatorId = order.createdBy || undefined;
     const pharmacistProfile = creatorId ? staffProfiles.find(s => s.id === creatorId) : undefined;
-    const cashierId = currentUser?.id;
+    const cashierId = currentUser?.id || undefined;
     const cashierProfile = cashierId ? (staffProfiles.find(s => s.id === cashierId) || currentUser) : currentUser;
 
-    if (order) {
-      const saleRecord: SaleRecord = {
-        id: completedSaleId,
-        items: order.items.map(item => ({
-          batchId: item.id,
-          drugName: item.drugName,
-          unitPrice: item.unitPrice,
-          quantity: item.quantity,
-        })),
-        subtotal: order.subtotal,
-        discount: null,
-        discountAmount: 0,
-        tax: order.tax,
-        total: order.total,
-        paymentMethod: paymentMethod,
-        amountTendered: amountTendered,
-        changeDue: changeDue,
-        timestamp: order.createdAt || now, // Preserve original pharmacist submission timestamp
-        salespersonId: creatorId,
-        pharmacistName: pharmacistProfile?.name,
-        cashierId: cashierId,
-        cashierName: cashierProfile?.name,
-      };
+    const saleRecord: SaleRecord = {
+      id: targetSaleId,
+      items: order.items.map(item => ({
+        batchId: item.id,
+        drugName: item.drugName,
+        unitPrice: item.unitPrice,
+        quantity: item.quantity,
+      })),
+      subtotal: order.subtotal,
+      discount: null,
+      discountAmount: 0,
+      tax: order.tax,
+      total: order.total,
+      paymentMethod: paymentMethod,
+      amountTendered: amountTendered,
+      changeDue: changeDue,
+      timestamp: order.createdAt || now,
+      salespersonId: creatorId,
+      pharmacistName: pharmacistProfile?.name,
+      cashierId: cashierId,
+      cashierName: cashierProfile?.name,
+    };
 
-      // ── Step 4: Optimistically update local completedSales ──
-      setCompletedSales(prev => {
-        if (prev.some(s => s.id === saleRecord.id)) return prev;
-        const next = [saleRecord, ...prev];
-        return next.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      });
-
-      // ── Step 5: Persist the sale record to Supabase ──
-      // If a duplicate-key error occurs (from a previous partial attempt), silently ignore it.
-      try {
-        await insertCompletedSale(saleRecord);
-        console.log("[completeInPersonOrder] Sale inserted successfully:", completedSaleId, "total:", order.total, "method:", paymentMethod);
-      } catch (err: any) {
-        const msg = String(err?.message || err);
-        if (msg.includes("duplicate") || msg.includes("23505")) {
-          console.log("[completeInPersonOrder] Sale already exists in DB (duplicate), ignoring:", completedSaleId);
-        } else {
-          console.error("[completeInPersonOrder] insertCompletedSale failed:", {
-            saleId: completedSaleId,
-            orderId,
-            total: order.total,
-            error: msg,
-          });
-          // Roll back the optimistic update if insert truly failed
-          setCompletedSales(prev => prev.filter(s => s.id !== saleRecord.id));
+    // ── ATOMIC STEP 2: Deduct stock in Supabase first with sufficiency guard ──
+    const deductedBatches: { batchId: string; amount: number }[] = [];
+    try {
+      for (const item of order.items) {
+        if (item.id && item.quantity > 0) {
+          const deductRes = await deductInventoryStock(item.id, item.quantity);
+          if (!deductRes.success) {
+            throw new Error(deductRes.error || `Insufficient stock for ${item.drugName}`);
+          }
+          deductedBatches.push({ batchId: item.id, amount: item.quantity });
         }
       }
 
-      // ── Step 6: Deduct inventory quantities ──
+      for (const item of order.items) {
+        if (item.id) {
+          await deductCatalogStock(item.id, item.quantity).catch(console.warn);
+        }
+      }
+
+      // ── ATOMIC STEP 3: Save completed sale to Supabase ──
+      const confirmedSale = await insertCompletedSale(saleRecord);
+
+      // ── ATOMIC STEP 4: Mark pharmacy order completed in Supabase ──
+      const { error: updateErr } = await updatePharmacyOrderStatus(orderId, "completed", {
+        completedAt: now,
+        saleId: confirmedSale.id,
+      });
+
+      if (updateErr) {
+        console.warn("[completeInPersonOrder] pharmacy_order status update warning:", updateErr);
+      }
+
+      // ── CONFIRMED SUCCESS: Update local UI states ONLY after Supabase confirmation ──
+      setInPersonOrders(prev => prev.map(o => o.id === orderId ? {
+        ...o, status: "completed", completedAt: now, saleId: confirmedSale.id,
+      } : o));
+
+      setCompletedSales(prev => {
+        const map = new Map<string, SaleRecord>();
+        [confirmedSale, ...prev].forEach(s => map.set(s.id, s));
+        return Array.from(map.values()).sort(
+          (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        );
+      });
+
       setInventory(prev =>
         prev.map(batch => {
-          const soldItem = order.items.find(item =>
-            item.id === batch.id || item.drugName.toLowerCase() === batch.drugName.toLowerCase()
-          );
-          if (soldItem) {
-            deductInventoryStock(batch.id, soldItem.quantity).catch(console.error);
-            return { ...batch, quantity: Math.max(0, batch.quantity - soldItem.quantity) };
-          }
-          return batch;
+          const sold = deductedBatches.find(d => d.batchId === batch.id);
+          return sold ? { ...batch, quantity: Math.max(0, batch.quantity - sold.amount) } : batch;
         })
       );
 
-      // ── Step 7: Deduct catalog quantities ──
       setCatalog(prev =>
         prev.map(cat => {
-          const soldItem = order.items.find(item =>
-            item.drugName.toLowerCase() === cat.drugName.toLowerCase()
-          );
+          const soldItem = order.items.find(item => item.drugName.toLowerCase() === cat.drugName.toLowerCase());
           if (soldItem) {
-            deductCatalogStock(cat.id, soldItem.quantity).catch(console.error);
             const newQty = Math.max(0, cat.quantity - soldItem.quantity);
             return { ...cat, quantity: newQty, inStock: newQty > 0 };
           }
           return cat;
         })
       );
-    }
 
-    addLog("IN_PERSON_ORDER_COMPLETED", `Order ${orderId} completed and paid via ${paymentMethod} — Receipt ${completedSaleId} created`);
-    return true;
+      addLog("IN_PERSON_ORDER_COMPLETED", `Order ${orderId} completed and paid via ${paymentMethod} — Receipt ${confirmedSale.id} created`);
+      return true;
+    } catch (err: any) {
+      console.error("[completeInPersonOrder] Transaction failed, rolling back stock:", err);
+      // Rollback any stock deducted prior to failure
+      for (const batch of deductedBatches) {
+        await restoreInventoryStock(batch.batchId, batch.amount).catch(console.error);
+      }
+      alert(NETWORK_SALE_ERROR_MSG);
+      return false;
+    }
   }, [inPersonOrders, addLog, currentUser, staffProfiles]);
 
   const cancelInPersonOrder = useCallback((orderId: string) => {
