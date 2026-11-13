@@ -34,6 +34,7 @@ export function EditMedicineDialog({ batch, open, onClose }: Props) {
     safetyThreshold: "",
   });
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (batch) {
@@ -60,31 +61,39 @@ export function EditMedicineDialog({ batch, open, onClose }: Props) {
     setForm((f) => ({ ...f, category: val, isRx: val !== "cosmetics" }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.drugName.trim()) {
       alert("Drug name cannot be empty.");
       return;
     }
     const isRxItem = form.category !== "cosmetics";
-    updateMedicine(batch.id, {
-      oldDrugName: batch.drugName,
-      drugName: form.drugName,
-      genericName: form.genericName,
-      dosage: form.dosage,
-      category: form.category,
-      isRx: isRxItem,
-      unitPrice: Number(form.unitPrice) || 0,
-      quantity: Number(form.quantity) || 0,
-      batchNumber: form.batchNumber,
-      expiryDate: form.expiryDate,
-      safetyThreshold: Number(form.safetyThreshold) || 10,
-    });
-    setSubmitted(true);
-    setTimeout(() => {
-      setSubmitted(false);
-      onClose();
-    }, 1200);
+    setSubmitting(true);
+    try {
+      const success = await updateMedicine(batch.id, {
+        oldDrugName: batch.drugName,
+        drugName: form.drugName,
+        genericName: form.genericName,
+        dosage: form.dosage,
+        category: form.category,
+        isRx: isRxItem,
+        unitPrice: Number(form.unitPrice) || 0,
+        quantity: Number(form.quantity) || 0,
+        batchNumber: form.batchNumber,
+        expiryDate: form.expiryDate,
+        safetyThreshold: Number(form.safetyThreshold) || 10,
+      });
+
+      if (success) {
+        setSubmitted(true);
+        setTimeout(() => {
+          setSubmitted(false);
+          onClose();
+        }, 1200);
+      }
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -179,9 +188,9 @@ export function EditMedicineDialog({ batch, open, onClose }: Props) {
             )}
 
             <DialogFooter className="gap-2 flex-wrap">
-              <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-              <Button type="submit" className="gap-2 bg-teal-600 hover:bg-teal-700 text-white font-semibold">
-                <Save className="h-4 w-4" /> Save Changes
+              <Button type="button" variant="outline" disabled={submitting} onClick={onClose}>Cancel</Button>
+              <Button type="submit" disabled={submitting} className="gap-2 bg-teal-600 hover:bg-teal-700 text-white font-semibold">
+                <Save className="h-4 w-4" /> {submitting ? "Saving Changes..." : "Save Changes"}
               </Button>
             </DialogFooter>
           </form>

@@ -27,12 +27,14 @@ export default function ReceiveShipmentsPage() {
     unitPrice: "",
   });
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const taxStatus = calculateTaxStatus(form.category, form.drugName);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    receiveShipment({
+    setSubmitting(true);
+    const success = await receiveShipment({
       drugName: form.drugName,
       genericName: form.genericName,
       dosage: form.dosage,
@@ -45,9 +47,13 @@ export default function ReceiveShipmentsPage() {
       safetyThreshold: 10,
       quarantined: false,
     });
-    setSubmitted(true);
-    setForm({ drugName: "", genericName: "", dosage: "", category: "anti_biotic", batchNumber: "", quantity: "", supplier: "", expiryDate: "", unitPrice: "" });
-    setTimeout(() => setSubmitted(false), 3000);
+    setSubmitting(false);
+
+    if (success) {
+      setSubmitted(true);
+      setForm({ drugName: "", genericName: "", dosage: "", category: "anti_biotic", batchNumber: "", quantity: "", supplier: "", expiryDate: "", unitPrice: "" });
+      setTimeout(() => setSubmitted(false), 3000);
+    }
   };
 
   return (
@@ -151,9 +157,9 @@ export default function ReceiveShipmentsPage() {
                   />
                 </div>
                 <div className="sm:col-span-2">
-                  <Button type="submit" className="w-full gap-2 bg-orange-500 hover:bg-orange-600 text-white font-semibold">
+                  <Button type="submit" disabled={submitting} className="w-full gap-2 bg-orange-500 hover:bg-orange-600 text-white font-semibold">
                     <PackagePlus className="h-4 w-4" />
-                    Confirm Shipment Receipt
+                    {submitting ? "Saving to Database..." : "Confirm Shipment Receipt"}
                   </Button>
                 </div>
               </form>

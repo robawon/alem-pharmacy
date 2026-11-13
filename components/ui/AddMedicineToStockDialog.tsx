@@ -34,8 +34,9 @@ export function AddMedicineToStockDialog({ open, onClose }: Props) {
   const [form, setForm] = useState(EMPTY);
   const [category, setCategory] = useState<DrugCategory>("anti_biotic");
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!form.drugName.trim()) {
@@ -58,27 +59,34 @@ export function AddMedicineToStockDialog({ open, onClose }: Props) {
       return;
     }
 
-    receiveShipment({
-      drugName: form.drugName,
-      genericName: form.genericName,
-      dosage: form.dosage,
-      category,
-      isRx: category !== "cosmetics",
-      batchNumber: form.batchNumber.trim() || `BATCH-${Date.now()}`,
-      expiryDate: form.expiryDate,
-      safetyThreshold: Number(form.safetyThreshold) || 10,
-      unitPrice: Number(form.unitPrice),
-      quantity: Number(form.quantity),
-      quarantined: false,
-    });
+    setSubmitting(true);
+    try {
+      const success = await receiveShipment({
+        drugName: form.drugName,
+        genericName: form.genericName,
+        dosage: form.dosage,
+        category,
+        isRx: category !== "cosmetics",
+        batchNumber: form.batchNumber.trim() || `BATCH-${Date.now()}`,
+        expiryDate: form.expiryDate,
+        safetyThreshold: Number(form.safetyThreshold) || 10,
+        unitPrice: Number(form.unitPrice),
+        quantity: Number(form.quantity),
+        quarantined: false,
+      });
 
-    setSubmitted(true);
-    setTimeout(() => {
-      setSubmitted(false);
-      setForm(EMPTY);
-      setCategory("anti_biotic");
-      onClose();
-    }, 1200);
+      if (success) {
+        setSubmitted(true);
+        setTimeout(() => {
+          setSubmitted(false);
+          setForm(EMPTY);
+          setCategory("anti_biotic");
+          onClose();
+        }, 1200);
+      }
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -191,12 +199,12 @@ export function AddMedicineToStockDialog({ open, onClose }: Props) {
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => { setForm(EMPTY); setCategory("anti_biotic"); onClose(); }}>
+              <Button type="button" variant="outline" disabled={submitting} onClick={() => { setForm(EMPTY); setCategory("anti_biotic"); onClose(); }}>
                 Cancel
               </Button>
-              <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700">
+              <Button type="submit" disabled={submitting} className="bg-emerald-600 hover:bg-emerald-700">
                 <Pill className="mr-2 h-4 w-4" />
-                Add to Stock
+                {submitting ? "Saving to Database..." : "Add to Stock"}
               </Button>
             </DialogFooter>
           </form>

@@ -465,8 +465,26 @@ export async function fetchStaffProfiles(): Promise<StaffProfile[]> {
 
 // ── Write functions ──────────────────────────────────────────────────────────
 
-export async function insertInventoryBatch(batch: StockBatch) {
-  const { error } = await supabase.from("inventory").insert({
+export async function fetchInventoryBatchById(batchId: string): Promise<StockBatch | null> {
+  const { data, error } = await supabase
+    .from("inventory")
+    .select("*")
+    .eq("id", batchId)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return toStockBatch(data);
+}
+
+export async function insertInventoryBatch(batch: StockBatch): Promise<StockBatch> {
+  // Idempotency check: if batch with this ID already exists, return confirmed record
+  const existing = await fetchInventoryBatchById(batch.id);
+  if (existing) {
+    console.log("[insertInventoryBatch] Batch already committed in DB:", batch.id);
+    return existing;
+  }
+
+  const { data, error } = await supabase.from("inventory").insert({
     id: batch.id,
     drug_name: batch.drugName,
     batch_number: batch.batchNumber,
@@ -475,11 +493,23 @@ export async function insertInventoryBatch(batch: StockBatch) {
     unit_price: batch.unitPrice,
     quantity: batch.quantity,
     quarantined: batch.quarantined,
-  });
+  }).select();
 
   if (error) {
+    // If unique constraint violation, return existing record
+    if (error.code === "23505") {
+      const confirmed = await fetchInventoryBatchById(batch.id);
+      if (confirmed) return confirmed;
+    }
+    console.error("insertInventoryBatch error:", error.message);
     throw new Error(`Failed to insert inventory batch: ${error.message}`);
   }
+
+  if (!data || data.length === 0) {
+    throw new Error("Inventory insert returned no data confirmation.");
+  }
+
+  return toStockBatch(data[0]);
 }
 
 export async function updateCatalogItem(
@@ -736,10 +766,27 @@ export async function appendAuditLog(log: AuditLogEntry) {
 }
 
 export async function insertCatalogItem(item: CatalogItem) {
+  // Normalize category to satisfy Supabase check constraint ('otc', 'prescription', 'vitamins', 'first_aid')
+  const validCategories = ["otc", "prescription", "vitamins", "first_aid"];
+  let safeCategory = "prescription";
+  if (validCategories.includes(item.category)) {
+    safeCategory = item.category;
+  } else if (item.category === "vitamins_minerals") {
+    safeCategory = "vitamins";
+  } else if (!item.isRx || item.category === "cosmetics") {
+    safeCategory = "otc";
+  }
+
   const { error } = await supabase.from("catalog_items").insert({
-    id: item.id, drug_name: item.drugName, generic_name: item.genericName,
-    dosage: item.dosage, category: item.category, is_rx: item.isRx,
-    unit_price: item.unitPrice, quantity: item.quantity, in_stock: item.inStock,
+    id: item.id,
+    drug_name: item.drugName,
+    generic_name: item.genericName,
+    dosage: item.dosage,
+    category: safeCategory,
+    is_rx: item.isRx,
+    unit_price: item.unitPrice,
+    quantity: item.quantity,
+    in_stock: item.inStock,
     image_url: item.imageUrl ?? null,
   });
   if (error) console.error("insertCatalogItem:", error.message);

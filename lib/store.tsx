@@ -16,6 +16,7 @@ import {
   updateStaffProfile, restoreInventoryStock, restoreCatalogStock, deductInventoryStock, deductCatalogStock,
   updateCatalogItem, fetchPharmacyOrders, fetchPharmacyOrderById, insertPharmacyOrder, updatePharmacyOrderStatus, getPharmacyOrderSaleId,
   updateCustomerOrderViewed, updatePharmacyOrderViewed, toSaleRecord, fetchCompletedSaleById,
+  fetchInventoryBatchById,
 } from "./db";
 
 import { calculateTaxStatus } from "./tax";
@@ -67,9 +68,9 @@ interface StoreContextType extends State {
   exportAuditLogs: () => void;
   changeRole: (id: string, role: Role) => void;
   toggleStaffStatus: (id: string) => void;
-  receiveShipment: (form: any) => void;
+  receiveShipment: (form: any) => Promise<boolean>;
   removeStock: (batchId: string) => void;
-  updateMedicine: (batchId: string, patch: any) => void;
+  updateMedicine: (batchId: string, patch: any) => Promise<boolean>;
   disposeStock: (batchId: string) => void;
   verifyPrescription: (id: string) => void;
   quarantineBatch: (batchId: string) => void;
@@ -91,7 +92,7 @@ interface StoreContextType extends State {
   updateCustomerCartQty: (catalogId: string, delta: number) => void;
   placeCustomerOrder: (contactInfo: CustomerContactInfo, prescriptionFile?: { fileName: string; notes: string }) => void;
   uploadCustomerPrescription: (upload: Omit<CustomerPrescriptionUpload, "id" | "status" | "uploadedAt">) => void;
-  addCatalogItem: (item: Omit<CatalogItem, "id">) => void;
+  addCatalogItem: (item: Omit<CatalogItem, "id"> & { batchNumber?: string; expiryDate?: string; safetyThreshold?: number }) => Promise<boolean>;
   updateCustomerOrderStatus: (orderId: string, status: string) => void;
   markCustomerOrderAsViewed: (orderId: string) => void;
   markInPersonOrderAsViewed: (orderId: string) => void;
@@ -183,8 +184,56 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     // Live Real-Time Subscriptions across all tables and roles
     const channel = supabase
       .channel("realtime-pms-sync")
-      .on("postgres_changes", { event: "*", schema: "public", table: "inventory" }, () => {
-        fetchInventory().then(setInventory).catch(console.error);
+      .on("postgres_changes", { event: "*", schema: "public", table: "inventory" }, (payload: any) => {
+        if (payload?.eventType === "INSERT" && payload?.new) {
+          try {
+            const row = payload.new;
+            const newBatch: StockBatch = {
+              id: row.id,
+              drugName: row.drug_name,
+              batchNumber: row.batch_number,
+              expiryDate: row.expiry_date,
+              safetyThreshold: row.safety_threshold,
+              unitPrice: Number(row.unit_price),
+              quantity: row.quantity,
+              quarantined: row.quarantined,
+              category: row.category ?? undefined,
+            };
+            setInventory(prev => {
+              if (prev.some(b => b.id === newBatch.id)) return prev;
+              return [...prev, newBatch];
+            });
+          } catch (e) {
+            console.warn("Realtime inventory INSERT parse error:", e);
+          }
+        } else if (payload?.eventType === "UPDATE" && payload?.new) {
+          try {
+            const row = payload.new;
+            const updatedBatch: StockBatch = {
+              id: row.id,
+              drugName: row.drug_name,
+              batchNumber: row.batch_number,
+              expiryDate: row.expiry_date,
+              safetyThreshold: row.safety_threshold,
+              unitPrice: Number(row.unit_price),
+              quantity: row.quantity,
+              quarantined: row.quarantined,
+              category: row.category ?? undefined,
+            };
+            setInventory(prev => prev.map(b => b.id === updatedBatch.id ? updatedBatch : b));
+          } catch (e) {
+            console.warn("Realtime inventory UPDATE parse error:", e);
+          }
+        } else if (payload?.eventType === "DELETE" && payload?.old) {
+          const deletedId = payload.old.id;
+          if (deletedId) {
+            setInventory(prev => prev.filter(b => b.id !== deletedId));
+          }
+        } else {
+          fetchInventory().then(inv => {
+            if (inv && inv.length > 0) setInventory(inv);
+          }).catch(console.error);
+        }
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "catalog_items" }, () => {
         fetchCatalog().then(setCatalog).catch(console.error);
@@ -477,63 +526,74 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [addLog]);
 
   // ── Inventory ───────────────────────────────────────────────────────────
-  const receiveShipment = useCallback(async (form: any) => {
-    const newBatch: StockBatch = { ...form, id: newId("batch") };
-    const previousInventory = [...inventory];
-    const previousCatalog = [...catalog];
-
-    setInventory(prev => [...prev, newBatch]);
+  const receiveShipment = useCallback(async (form: any): Promise<boolean> => {
+    const newBatchId = form.id || newId("batch");
+    const newBatch: StockBatch = { ...form, id: newBatchId };
 
     try {
-      await insertInventoryBatch(newBatch);
+      // 1. Mandatory database-first insert into Supabase inventory table
+      const confirmedBatch = await insertInventoryBatch(newBatch);
       addLog("RECEIVE_SHIPMENT", `Received shipment of ${form.drugName} — ${form.quantity} units`);
 
-      // Sync to catalog item
-      const existing = catalog.find(c => c.drugName.trim().toLowerCase() === (form.drugName || "").trim().toLowerCase());
-      if (existing) {
-        const newPrice = Number(form.unitPrice);
-        const updatedCat = form.category || existing.category;
-        const newQty = existing.quantity + (Number(form.quantity) || 0);
-        const finalPrice = !isNaN(newPrice) && newPrice > 0 ? newPrice : existing.unitPrice;
+      // 2. Only after Supabase confirms the insert, update local state
+      setInventory(prev => {
+        if (prev.some(b => b.id === confirmedBatch.id)) {
+          return prev.map(b => b.id === confirmedBatch.id ? confirmedBatch : b);
+        }
+        return [...prev, confirmedBatch];
+      });
 
-        const updated: CatalogItem = {
-          ...existing,
-          category: updatedCat,
-          quantity: newQty,
-          unitPrice: finalPrice,
-          inStock: newQty > 0,
-        };
+      // 3. Sync to catalog item in background
+      try {
+        const existing = catalog.find(c => c.drugName.trim().toLowerCase() === (form.drugName || "").trim().toLowerCase());
+        if (existing) {
+          const newPrice = Number(form.unitPrice);
+          const updatedCat = form.category || existing.category;
+          const newQty = existing.quantity + (Number(form.quantity) || 0);
+          const finalPrice = !isNaN(newPrice) && newPrice > 0 ? newPrice : existing.unitPrice;
 
-        await updateCatalogItem(existing.id, {
-          category: updatedCat,
-          unitPrice: finalPrice,
-          quantity: newQty,
-          inStock: newQty > 0,
-        });
+          const updated: CatalogItem = {
+            ...existing,
+            category: updatedCat,
+            quantity: newQty,
+            unitPrice: finalPrice,
+            inStock: newQty > 0,
+          };
 
-        setCatalog(prev => prev.map(c => c.id === existing.id ? updated : c));
-      } else {
-        const newCatalogItem: CatalogItem = {
-          id: newId("cat"),
-          drugName: form.drugName,
-          genericName: form.genericName || form.drugName,
-          dosage: form.dosage || "",
-          category: form.category || "anti_biotic",
-          isRx: form.category ? form.category !== "cosmetics" : true,
-          unitPrice: Number(form.unitPrice) || 0,
-          quantity: Number(form.quantity) || 0,
-          inStock: Number(form.quantity) > 0,
-        };
-        await insertCatalogItem(newCatalogItem);
-        setCatalog(prev => [newCatalogItem, ...prev]);
+          await updateCatalogItem(existing.id, {
+            category: updatedCat,
+            unitPrice: finalPrice,
+            quantity: newQty,
+            inStock: newQty > 0,
+          });
+
+          setCatalog(prev => prev.map(c => c.id === existing.id ? updated : c));
+        } else {
+          const newCatalogItem: CatalogItem = {
+            id: newId("cat"),
+            drugName: form.drugName,
+            genericName: form.genericName || form.drugName,
+            dosage: form.dosage || "",
+            category: form.category || "anti_biotic",
+            isRx: form.category ? form.category !== "cosmetics" : true,
+            unitPrice: Number(form.unitPrice) || 0,
+            quantity: Number(form.quantity) || 0,
+            inStock: Number(form.quantity) > 0,
+          };
+          await insertCatalogItem(newCatalogItem);
+          setCatalog(prev => [newCatalogItem, ...prev]);
+        }
+      } catch (catErr) {
+        console.warn("Catalog sync warning during receiveShipment:", catErr);
       }
+
+      return true;
     } catch (error: any) {
-      setInventory(previousInventory);
-      setCatalog(previousCatalog);
-      console.error("Failed to receive shipment:", error);
+      console.error("Failed to receive shipment in Supabase:", error);
       alert(NETWORK_MEDICINE_ERROR_MSG);
+      return false;
     }
-  }, [addLog, inventory, catalog]);
+  }, [addLog, catalog]);
 
   const disposeStock = useCallback((batchId: string) => {
     setInventory(prev => prev.map(b => b.id === batchId ? { ...b, quantity: 0 } : b));
@@ -1068,10 +1128,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [addLog, currentUser, catalog, addToCustomerCart]
   );
 
-  const addCatalogItem = useCallback(async (item: Omit<CatalogItem, "id"> & { batchNumber?: string; expiryDate?: string; safetyThreshold?: number }) => {
-    const previousCatalog = [...catalog];
-    const previousInventory = [...inventory];
-
+  const addCatalogItem = useCallback(async (item: Omit<CatalogItem, "id"> & { batchNumber?: string; expiryDate?: string; safetyThreshold?: number }): Promise<boolean> => {
     const newItem: CatalogItem = { ...item, id: newId("cat") };
     const formattedBatchNum = item.batchNumber || (item.drugName ? `${item.drugName.replace(/[^a-zA-Z0-9]/g, "").slice(0, 4).toUpperCase()}-${Date.now().toString().slice(-6)}` : `BATCH-${Date.now().toString().slice(-6)}`);
     const newBatch: StockBatch = {
@@ -1086,20 +1143,34 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       quarantined: false,
     };
 
-    setCatalog(prev => [newItem, ...prev]);
-    setInventory(prev => [...prev, newBatch]);
-
     try {
-      await insertCatalogItem(newItem);
-      await insertInventoryBatch(newBatch);
+      // 1. Mandatory database-first insert into Supabase inventory table
+      const confirmedBatch = await insertInventoryBatch(newBatch);
       addLog("CATALOG_ITEM_ADDED", `Admin added new medicine: ${item.drugName} (${item.category})`);
+
+      // 2. Only after Supabase confirms the insert, update local inventory state
+      setInventory(prev => {
+        if (prev.some(b => b.id === confirmedBatch.id)) {
+          return prev.map(b => b.id === confirmedBatch.id ? confirmedBatch : b);
+        }
+        return [...prev, confirmedBatch];
+      });
+
+      // 3. Sync to catalog items in background
+      try {
+        await insertCatalogItem(newItem);
+        setCatalog(prev => [newItem, ...prev]);
+      } catch (catErr) {
+        console.warn("Catalog sync warning during addCatalogItem:", catErr);
+      }
+
+      return true;
     } catch (error: any) {
-      setCatalog(previousCatalog);
-      setInventory(previousInventory);
-      console.error("Failed to add medicine:", error);
+      console.error("Failed to add medicine in Supabase:", error);
       alert(NETWORK_MEDICINE_ERROR_MSG);
+      return false;
     }
-  }, [addLog, catalog, inventory]);
+  }, [addLog]);
 
   const removeStock = useCallback(async (batchId: string) => {
     const previousInventory = [...inventory];
@@ -1121,57 +1192,54 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   }, [addLog, inventory]);
 
-  const updateMedicine = useCallback(async (batchId: string, patch: any) => {
-    const previousInventory = [...inventory];
-    const previousCatalog = [...catalog];
-
-    // Optimistically update local inventory state by exact primary key batchId
-    setInventory(prev => prev.map(b => {
-      if (b.id === batchId) {
-        return {
-          ...b,
-          drugName: patch.drugName !== undefined ? patch.drugName : b.drugName,
-          category: patch.category !== undefined ? patch.category : b.category,
-          batchNumber: patch.batchNumber !== undefined ? patch.batchNumber : b.batchNumber,
-          expiryDate: patch.expiryDate !== undefined ? patch.expiryDate : b.expiryDate,
-          safetyThreshold: patch.safetyThreshold !== undefined ? Number(patch.safetyThreshold) : b.safetyThreshold,
-          unitPrice: patch.unitPrice !== undefined ? Number(patch.unitPrice) : b.unitPrice,
-          quantity: patch.quantity !== undefined ? Number(patch.quantity) : b.quantity,
-        };
-      }
-      return b;
-    }));
-
-    // Update catalog item ONLY if its ID strictly matches batchId
-    setCatalog(prev => prev.map(c => {
-      if (c.id === batchId) {
-        const newQty = patch.quantity !== undefined ? Number(patch.quantity) : c.quantity;
-        return {
-          ...c,
-          drugName: patch.drugName !== undefined ? patch.drugName : c.drugName,
-          genericName: patch.genericName !== undefined ? patch.genericName : c.genericName,
-          dosage: patch.dosage !== undefined ? patch.dosage : c.dosage,
-          category: patch.category !== undefined ? patch.category : c.category,
-          isRx: patch.isRx !== undefined ? patch.isRx : c.isRx,
-          unitPrice: patch.unitPrice !== undefined ? Number(patch.unitPrice) : c.unitPrice,
-          quantity: newQty,
-          inStock: newQty > 0,
-        };
-      }
-      return c;
-    }));
-
+  const updateMedicine = useCallback(async (batchId: string, patch: any): Promise<boolean> => {
     try {
       await updateMedicineRecord(batchId, patch);
       addLog("UPDATE_MEDICINE", `Updated medicine details for ${patch.drugName || batchId}`);
+
+      // Update local inventory state by exact primary key batchId
+      setInventory(prev => prev.map(b => {
+        if (b.id === batchId) {
+          return {
+            ...b,
+            drugName: patch.drugName !== undefined ? patch.drugName : b.drugName,
+            category: patch.category !== undefined ? patch.category : b.category,
+            batchNumber: patch.batchNumber !== undefined ? patch.batchNumber : b.batchNumber,
+            expiryDate: patch.expiryDate !== undefined ? patch.expiryDate : b.expiryDate,
+            safetyThreshold: patch.safetyThreshold !== undefined ? Number(patch.safetyThreshold) : b.safetyThreshold,
+            unitPrice: patch.unitPrice !== undefined ? Number(patch.unitPrice) : b.unitPrice,
+            quantity: patch.quantity !== undefined ? Number(patch.quantity) : b.quantity,
+          };
+        }
+        return b;
+      }));
+
+      // Update catalog item ONLY if its ID strictly matches batchId
+      setCatalog(prev => prev.map(c => {
+        if (c.id === batchId) {
+          const newQty = patch.quantity !== undefined ? Number(patch.quantity) : c.quantity;
+          return {
+            ...c,
+            drugName: patch.drugName !== undefined ? patch.drugName : c.drugName,
+            genericName: patch.genericName !== undefined ? patch.genericName : c.genericName,
+            dosage: patch.dosage !== undefined ? patch.dosage : c.dosage,
+            category: patch.category !== undefined ? patch.category : c.category,
+            isRx: patch.isRx !== undefined ? patch.isRx : c.isRx,
+            unitPrice: patch.unitPrice !== undefined ? Number(patch.unitPrice) : c.unitPrice,
+            quantity: newQty,
+            inStock: newQty > 0,
+          };
+        }
+        return c;
+      }));
+
+      return true;
     } catch (error: any) {
-      // Roll back UI state on DB failure
-      setInventory(previousInventory);
-      setCatalog(previousCatalog);
       console.error("Failed to update medicine record:", error);
-      alert(`Failed to update medicine: ${error.message || error}`);
+      alert(`Network connection is unstable. The medicine update was not confirmed as saved. Please check your internet connection and retry.`);
+      return false;
     }
-  }, [addLog, inventory, catalog]);
+  }, [addLog]);
 
   // ── In-Person Orders (Pharmacist → Cashier) ──────────────────────────────
   const createInPersonOrder = useCallback(async (patientName: string, items: (InPersonOrderItem & { category?: string })[]): Promise<boolean> => {

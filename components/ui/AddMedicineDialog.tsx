@@ -37,13 +37,15 @@ export function AddMedicineDialog({ open, onClose }: Props) {
   const [form, setForm] = useState(EMPTY);
   const [submitted, setSubmitted] = useState(false);
 
+  const [submitting, setSubmitting] = useState(false);
+
   const taxStatus = calculateTaxStatus(form.category, form.drugName);
 
   const handleCategoryChange = (val: DrugCategory) => {
     setForm((f) => ({ ...f, category:val, isRx: val !== "cosmetics" }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.drugName.trim()) {
       alert("Please enter the drug/medication name.");
@@ -51,7 +53,9 @@ export function AddMedicineDialog({ open, onClose }: Props) {
     }
     const isRxItem = form.category !== "cosmetics";
     const evaluatedTax = calculateTaxStatus(form.category, form.drugName);
-    addCatalogItem({
+    
+    setSubmitting(true);
+    const success = await addCatalogItem({
       drugName: form.drugName,
       genericName: form.genericName || form.drugName,
       dosage: form.dosage,
@@ -66,12 +70,17 @@ export function AddMedicineDialog({ open, onClose }: Props) {
       expiryDate: form.expiryDate || undefined,
       safetyThreshold: form.safetyThreshold ? Number(form.safetyThreshold) : undefined,
     } as any);
-    setSubmitted(true);
-    setTimeout(() => {
-      setSubmitted(false);
-      setForm(EMPTY);
-      onClose();
-    }, 1200);
+
+    setSubmitting(false);
+
+    if (success) {
+      setSubmitted(true);
+      setTimeout(() => {
+        setSubmitted(false);
+        setForm(EMPTY);
+        onClose();
+      }, 1200);
+    }
   };
 
   return (
@@ -179,9 +188,9 @@ export function AddMedicineDialog({ open, onClose }: Props) {
             )}
 
             <DialogFooter className="gap-2 flex-wrap">
-              <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-              <Button type="submit" className="gap-2 bg-teal-600 hover:bg-teal-700 text-white font-semibold">
-                <Plus className="h-4 w-4" /> Add Medicine
+              <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>Cancel</Button>
+              <Button type="submit" disabled={submitting} className="gap-2 bg-teal-600 hover:bg-teal-700 text-white font-semibold">
+                <Plus className="h-4 w-4" /> {submitting ? "Saving to Database..." : "Add Medicine"}
               </Button>
             </DialogFooter>
           </form>

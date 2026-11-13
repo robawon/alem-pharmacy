@@ -50,6 +50,7 @@ export function ReceiveShipmentModal() {
   const { receiveShipment } = useStore();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
+  const [submitting, setSubmitting] = useState(false);
 
   const isValid =
     form.drugName.trim() &&
@@ -59,9 +60,10 @@ export function ReceiveShipmentModal() {
     Number(form.unitPrice) > 0 &&
     Number(form.quantity) > 0;
 
-  function handleSubmit() {
-    if (!isValid) return;
-    receiveShipment({
+  async function handleSubmit() {
+    if (!isValid || submitting) return;
+    setSubmitting(true);
+    const success = await receiveShipment({
       drugName: form.drugName.trim(),
       genericName: form.genericName,
       dosage: form.dosage,
@@ -73,8 +75,12 @@ export function ReceiveShipmentModal() {
       unitPrice: Number(form.unitPrice),
       quantity: Number(form.quantity),
     });
-    setForm(emptyForm);
-    setOpen(false);
+    setSubmitting(false);
+
+    if (success) {
+      setForm(emptyForm);
+      setOpen(false);
+    }
   }
 
   return (
@@ -157,11 +163,11 @@ export function ReceiveShipmentModal() {
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={submitting}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={!isValid}>
-            Record Shipment
+          <Button onClick={handleSubmit} disabled={!isValid || submitting}>
+            {submitting ? "Saving to Database..." : "Record Shipment"}
           </Button>
         </DialogFooter>
       </DialogContent>
